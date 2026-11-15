@@ -2,6 +2,16 @@
 
 Se requiere un entorno que ejecute procesos Node.js y permita conectar con MySQL 8. El código no convierte un hosting estático en un servidor Node. Confirma los recursos disponibles en tu cuenta de Hostinger; para control del proceso, proxy y cron, también puede utilizarse un VPS.
 
+## App web de Node.js en hPanel
+
+1. En **Sitios web → Crear sitio → App web de Node.js**, selecciona el repositorio privado `GIORGITO9/gpos` y la rama `main`. Si Hostinger solicita acceso a GitHub, limita el acceso a ese repositorio.
+2. Elige Node.js **22**, npm y la raíz **`./`**. Selecciona **NestJS** o **Other** si el panel no detecta el proyecto desde la raíz.
+3. Usa **`npm run build:hostinger`** como comando de compilación y **`apps/api/dist/main.js`** como punto de entrada. El despliegue debe conservar tanto `apps/api/dist` como `apps/web/dist`, porque la API sirve la web desde esa carpeta. Si el panel exige un directorio de salida para el servidor, selecciona `apps/api/dist` y comprueba que no se descarte la web compilada.
+4. Añade las variables indicadas abajo en hPanel. Usa una base nueva para GPOS y conserva el puerto que asigne Hostinger. Configura `SERVE_WEB=true`, `NODE_ENV=production`, `FRONTEND_URL` con el dominio HTTPS definitivo y `NPM_CONFIG_INCLUDE=dev` para que la compilación tenga Prisma CLI, TypeScript y Vite.
+5. Revisa el log de compilación y verifica `/api/v1/health`, el acceso por HTTPS y un pedido de prueba. El comando aplica las migraciones pendientes y crea los planes iniciales sin datos demo ni sobrescribir planes existentes.
+
+La sección **Emails** de hPanel permite identificar el buzón remitente y consultar su configuración. Para **Hostinger Email**, la configuración de salida habitual es `smtp.hostinger.com:465` con TLS. La recuperación de contraseñas todavía requiere el flujo de solicitud y cambio de contraseña en GPOS, además de una prueba de entrega con ese buzón. Las credenciales del buzón se configuran en el entorno del servidor.
+
 ## Variables
 
 Configura en el entorno del servidor, nunca en Git:
