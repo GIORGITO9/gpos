@@ -1,0 +1,1 @@
+ALTER TABLE `Order` ADD COLUMN `mergedIntoId` VARCHAR(191) NULL;

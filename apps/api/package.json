@@ -1,0 +1,25 @@
+{
+  "name": "@gpos/api",
+  "private": true,
+  "scripts": {
+    "dev": "tsx watch src/main.ts",
+    "build": "tsc -p tsconfig.json",
+    "start": "node dist/main.js"
+  },
+  "dependencies": {
+    "@nestjs/common": "11.2.9",
+    "@nestjs/core": "11.2.9",
+    "@nestjs/platform-express": "11.2.9",
+    "reflect-metadata": "0.2.2",
+    "rxjs": "7.8.2",
+    "jsonwebtoken": "9.0.2",
+    "helmet": "8.1.0",
+    "express-rate-limit": "8.7.3",
+    "cookie-parser": "1.4.7"
+  },
+  "devDependencies": {
+    "@types/jsonwebtoken": "9.0.10",
+    "@types/express": "5.0.5",
+    "@types/cookie-parser": "1.4.9"
+  }
+}

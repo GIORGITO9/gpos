@@ -1,0 +1,120 @@
+import { create } from "zustand";
+export const useSession = create<any>((set) => ({
+  token: null,
+  user: null,
+  branchId: localStorage.getItem("gpos.branch"),
+  ready: false,
+  setSession: (data: any) =>
+    set({ token: data.access_token, user: data.user, ready: true }),
+  setBranch: (branchId: string) => {
+    localStorage.setItem("gpos.branch", branchId);
+    set({ branchId });
+  },
+  clear: () => set({ token: null, user: null, ready: true }),
+}));
+let refreshing: Promise<any> | null = null;
+export async function restore() {
+  if (!refreshing)
+    refreshing = fetch("/api/v1/auth/refresh", {
+      method: "POST",
+      credentials: "include",
+    })
+      .then(async (r) => {
+        if (!r.ok) throw new Error("Inicia sesión para continuar");
+        const j = await r.json();
+        useSession.getState().setSession(j.data);
+        return j.data;
+      })
+      .finally(() => {
+        refreshing = null;
+      });
+  return refreshing;
+}
+export async function api(
+  path: string,
+  body?: any,
+  method?: string,
+  retry = true,
+): Promise<any> {
+  const s = useSession.getState();
+  const r = await fetch("/api/v1/" + path, {
+    method: method || (body ? "POST" : "GET"),
+    credentials: "include",
+    headers: {
+      "Content-Type": "application/json",
+      ...(s.token ? { Authorization: "Bearer " + s.token } : {}),
+      ...(s.branchId ? { "X-Branch-Id": s.branchId } : {}),
+    },
+    ...(body ? { body: JSON.stringify(body) } : {}),
+  });
+  if (r.status === 401 && retry && !path.startsWith("auth/")) {
+    try {
+      await restore();
+      return api(path, body, method, false);
+    } catch {
+      useSession.getState().clear();
+      throw new Error("La sesión expiró. Inicia sesión de nuevo.");
+    }
+  }
+  const j = await r.json().catch(() => null);
+  if (!r.ok || !j?.success) {
+    const fallback =
+      r.status === 429
+        ? "Demasiados intentos. Espera un minuto y vuelve a intentarlo."
+        : "No fue posible conectar con el servidor";
+    throw new Error(j?.message || fallback);
+  }
+  return j;
+}
+export const get = async (path: string) => (await api(path)).data;
+export const can = (u: any, p: string) =>
+  u?.permissions?.some(
+    (v: string) => v === "*" || v === p || v === p.split(".")[0] + ".*",
+  );
+export const money = (v: number) =>
+  new Intl.NumberFormat("es-CO", {
+    style: "currency",
+    currency: "COP",
+    maximumFractionDigits: 0,
+  }).format(v || 0);
+export const date = (v: string) =>
+  new Intl.DateTimeFormat("es-CO", {
+    day: "numeric",
+    month: "short",
+    hour: "2-digit",
+    minute: "2-digit",
+    timeZone: "America/Bogota",
+  }).format(new Date(v));
+export const labels: Record<string, string> = {
+  CONFIRMADO: "Nuevo",
+  EN_PREPARACION: "En preparación",
+  LISTO: "Listo",
+  EN_CAMINO: "En camino",
+  ENTREGADO: "Entregado",
+  CERRADO: "Cobrado",
+  CANCELADO: "Cancelado",
+  UNIDO: "Unido",
+  BORRADOR: "Borrador",
+  MESA: "En mesa",
+  DOMICILIO: "Domicilio",
+  RECOGER: "Para recoger",
+  PARA_LLEVAR: "Para llevar",
+  LIBRE: "Disponible",
+  OCUPADA: "Ocupada",
+  RESERVADA: "Reservada",
+  FUERA_SERVICIO: "Fuera de servicio",
+  PENDIENTE: "Pendiente",
+  RECIBIDA: "Recibida",
+  ACTIVA: "Activa",
+  TRIAL: "Prueba gratuita",
+  PAST_DUE: "Pago pendiente",
+  SUSPENDIDA: "Suspendida",
+  CANCELADA: "Cancelada",
+  EFECTIVO: "Efectivo",
+  TARJETA: "Tarjeta",
+  NEQUI: "Nequi",
+  TRANSFERENCIA: "Transferencia",
+  DAVIPLATA: "Daviplata",
+  QR: "QR",
+  OTRO: "Otro",
+};

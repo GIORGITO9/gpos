@@ -1,0 +1,146 @@
+{
+  "schemaVersion": 2,
+  "generatedAt": "2026-11-09T19:01:02.842543+00:00",
+  "title": "Design System: GPOS",
+  "extensions": {
+    "shadows": [
+      {
+        "name": "primary-button",
+        "value": "0 3px 7px #1763e61a",
+        "purpose": "Acción principal."
+      },
+      {
+        "name": "modal",
+        "value": "0 24px 90px #14213933",
+        "purpose": "Separación modal."
+      },
+      {
+        "name": "toast",
+        "value": "0 10px 30px #172c3730",
+        "purpose": "Notificación flotante."
+      }
+    ],
+    "motion": [
+      {
+        "name": "control-transition",
+        "value": "background .16s, color .16s, transform .16s",
+        "purpose": "Respuesta de botones; desactivada con movimiento reducido."
+      },
+      {
+        "name": "press",
+        "value": "scale(0.98)",
+        "purpose": "Pulsación habilitada."
+      },
+      {
+        "name": "spinner",
+        "value": "spin 1s linear infinite",
+        "purpose": "Carga; desactivada con movimiento reducido."
+      }
+    ],
+    "breakpoints": [
+      {
+        "name": "mobile-max",
+        "value": "767px"
+      },
+      {
+        "name": "compact-sidebar-max",
+        "value": "1000px"
+      },
+      {
+        "name": "compact-desktop-max",
+        "value": "1200px"
+      },
+      {
+        "name": "wide-desktop-min",
+        "value": "1500px"
+      }
+    ]
+  },
+  "components": [
+    {
+      "name": "Primary Button",
+      "kind": "button",
+      "refersTo": "button-primary",
+      "description": "Variante existente del control de acción.",
+      "html": "<button class=\"ds-button\">Nueva venta</button>",
+      "css": ".ds-button{display:inline-flex;align-items:center;justify-content:center;gap:9px;border:1px solid #d6dce5;border-radius:9px;min-height:42px;padding:9px 15px;font:550 13px/1.5 -apple-system,BlinkMacSystemFont,\"Segoe UI\",sans-serif;cursor:pointer;transition:background .16s,color .16s,transform .16s}.ds-button:focus-visible{outline:3px solid #1763e680;outline-offset:4px}.ds-button:active:not(:disabled){transform:scale(.98)}.ds-button:disabled{opacity:.45;cursor:not-allowed}@media(prefers-reduced-motion:reduce){.ds-button{transition:none}}.ds-button{background:var(--blue,#1763e6);border-color:var(--blue,#1763e6);color:#fff;box-shadow:0 3px 7px #1763e61a}.ds-button:hover{background:#1055ce}"
+    },
+    {
+      "name": "Secondary Button",
+      "kind": "button",
+      "refersTo": "button-secondary",
+      "description": "Variante existente del control de acción.",
+      "html": "<button class=\"ds-button\">Cancelar</button>",
+      "css": ".ds-button{display:inline-flex;align-items:center;justify-content:center;gap:9px;border:1px solid #d6dce5;border-radius:9px;min-height:42px;padding:9px 15px;font:550 13px/1.5 -apple-system,BlinkMacSystemFont,\"Segoe UI\",sans-serif;cursor:pointer;transition:background .16s,color .16s,transform .16s}.ds-button:focus-visible{outline:3px solid #1763e680;outline-offset:4px}.ds-button:active:not(:disabled){transform:scale(.98)}.ds-button:disabled{opacity:.45;cursor:not-allowed}@media(prefers-reduced-motion:reduce){.ds-button{transition:none}}.ds-button{background:#fff;color:#333d4c}.ds-button:hover{background:#f0f1f4}"
+    },
+    {
+      "name": "Quiet Button",
+      "kind": "button",
+      "refersTo": "button-quiet",
+      "description": "Variante existente del control de acción.",
+      "html": "<button class=\"ds-button\">Ver pedidos</button>",
+      "css": ".ds-button{display:inline-flex;align-items:center;justify-content:center;gap:9px;border:1px solid #d6dce5;border-radius:9px;min-height:42px;padding:9px 15px;font:550 13px/1.5 -apple-system,BlinkMacSystemFont,\"Segoe UI\",sans-serif;cursor:pointer;transition:background .16s,color .16s,transform .16s}.ds-button:focus-visible{outline:3px solid #1763e680;outline-offset:4px}.ds-button:active:not(:disabled){transform:scale(.98)}.ds-button:disabled{opacity:.45;cursor:not-allowed}@media(prefers-reduced-motion:reduce){.ds-button{transition:none}}.ds-button{border:0;background:transparent;color:var(--blue,#1763e6)}"
+    },
+    {
+      "name": "Danger Button",
+      "kind": "button",
+      "refersTo": "button-danger",
+      "description": "Variante existente del control de acción.",
+      "html": "<button class=\"ds-button\">Cancelar pedido</button>",
+      "css": ".ds-button{display:inline-flex;align-items:center;justify-content:center;gap:9px;border:1px solid #d6dce5;border-radius:9px;min-height:42px;padding:9px 15px;font:550 13px/1.5 -apple-system,BlinkMacSystemFont,\"Segoe UI\",sans-serif;cursor:pointer;transition:background .16s,color .16s,transform .16s}.ds-button:focus-visible{outline:3px solid #1763e680;outline-offset:4px}.ds-button:active:not(:disabled){transform:scale(.98)}.ds-button:disabled{opacity:.45;cursor:not-allowed}@media(prefers-reduced-motion:reduce){.ds-button{transition:none}}.ds-button{background:#bd3535;border-color:#bd3535;color:#fff}"
+    },
+    {
+      "name": "Field",
+      "kind": "input",
+      "refersTo": "field",
+      "description": "Campo etiquetado.",
+      "html": "<label class=\"ds-field\"><span>Nombre</span><input placeholder=\"Nombre del producto\"></label>",
+      "css": ".ds-field{display:flex;flex-direction:column;gap:7px;margin-bottom:18px;color:#646e7e;font:12px/1.5 -apple-system,BlinkMacSystemFont,\"Segoe UI\",sans-serif}.ds-field span{font-weight:550}.ds-field input{border:1px solid #d6dce5;border-radius:9px;min-height:42px;padding:8px 12px;background:#fff;color:#333d4c;font:inherit;font-size:13px;caret-color:var(--blue,#1763e6)}.ds-field input:focus-visible{outline:3px solid #1763e680;outline-offset:4px}"
+    },
+    {
+      "name": "Ready Badge",
+      "kind": "chip",
+      "refersTo": "badge-ready",
+      "description": "Estado escrito, no interactivo.",
+      "html": "<span class=\"ds-badge\">Listo</span>",
+      "css": ".ds-badge{display:inline-flex;align-items:center;gap:5px;border-radius:5px;padding:4px 7px;font:500 11px/1.5 -apple-system,BlinkMacSystemFont,\"Segoe UI\",sans-serif;background:#eaf5ef;color:#286b50;white-space:nowrap}"
+    },
+    {
+      "name": "Panel",
+      "kind": "card",
+      "refersTo": "panel",
+      "description": "Superficie operativa de contenido.",
+      "html": "<section class=\"ds-panel\"><header><h2>Pedidos activos</h2></header></section>",
+      "css": ".ds-panel{background:#fff;border:1px solid var(--line,#e9e9ed);border-radius:14px;overflow:hidden;margin-bottom:24px;font-family:-apple-system,BlinkMacSystemFont,\"Segoe UI\",sans-serif;color:#24262b}.ds-panel header{padding:23px 24px}.ds-panel h2{font-size:16px;line-height:1.5;letter-spacing:-.02em;font-weight:650;margin:0}"
+    },
+    {
+      "name": "Navigation",
+      "kind": "nav",
+      "description": "Enlace lateral seleccionado.",
+      "html": "<nav class=\"ds-nav\"><a href=\"#\" aria-current=\"page\"><svg width=\"18\" height=\"18\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" aria-hidden=\"true\"><path d=\"M3 10 12 3l9 7v11h-6v-7H9v7H3Z\"/></svg><span>Inicio</span></a></nav>",
+      "css": ".ds-nav{padding:8px;background:#f0f1f4d9;backdrop-filter:blur(22px)}.ds-nav a{display:flex;align-items:center;gap:11px;padding:9px 12px;min-height:39px;border-radius:8px;font:600 13px/1.5 -apple-system,BlinkMacSystemFont,\"Segoe UI\",sans-serif;color:#185cce;background:#dfe8fb;text-decoration:none}.ds-nav a:focus-visible{outline:3px solid #1763e680;outline-offset:4px}@media(prefers-reduced-transparency:reduce){.ds-nav{backdrop-filter:none;background:#f0f1f4}}"
+    }
+  ],
+  "narrative": {
+    "northStar": "Operación visible",
+    "overview": "La interfaz operativa usa gris porcelana, blanco, grafito y azul funcional. La tipografía del sistema y los materiales translúcidos de navegación mantienen la atención en pedidos, importes y acciones. La densidad es compacta; las superficies se separan principalmente por tono y bordes suaves.",
+    "keyCharacteristics": [
+      "Tipografía del sistema y cifras tabulares en tablas e indicadores.",
+      "Azul funcional para acciones y selección; estados semánticos contenidos.",
+      "Navegación translúcida, contenido blanco y esquinas suavizadas.",
+      "Respuesta breve a la pulsación y alternativas para preferencias de accesibilidad."
+    ],
+    "rules": [],
+    "dos": [
+      "Do conservar la jerarquía de títulos, datos y metadatos del sistema.",
+      "Do acompañar los estados con texto y mantener los importes alineados con cifras tabulares.",
+      "Do mantener foco visible, etiquetas accesibles y las alternativas de movimiento y transparencia reducidos.",
+      "Do adaptar navegación y columnas a los puntos de ruptura existentes."
+    ],
+    "donts": [
+      "Don't convertir las superficies de trabajo en vidrio translúcido: el material está en la navegación y el fondo modal.",
+      "Don't presentar resortes, gestos o animaciones físicas como capacidades implementadas: la versión actual usa transiciones CSS breves.",
+      "Don't asumir que todos los controles alcanzan 44px ni declarar conformidad de accesibilidad sin una auditoría específica."
+    ]
+  }
+}

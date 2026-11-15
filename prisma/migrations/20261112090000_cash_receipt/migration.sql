@@ -1,0 +1,3 @@
+ALTER TABLE `Payment`
+  ADD COLUMN `cashReceived` INTEGER NULL,
+  ADD COLUMN `cashChange` INTEGER NULL;
