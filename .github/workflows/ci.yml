@@ -22,7 +22,7 @@ jobs:
           MYSQL_USER: gpos_ci
           MYSQL_PASSWORD: ci-only-database-password
         ports:
-          - 3306/tcp
+          - 3307:3306
         options: >-
           --health-cmd "mysql --protocol=TCP -u gpos_ci -pci-only-database-password gpos_ci -e 'SELECT 1'"
           --health-interval 5s
@@ -30,7 +30,7 @@ jobs:
           --health-retries 20
 
     env:
-      DATABASE_URL: mysql://gpos_ci:ci-only-database-password@127.0.0.1:${{ job.services.mysql.ports[3306] }}/gpos_ci
+      DATABASE_URL: mysql://gpos_ci:ci-only-database-password@127.0.0.1:3307/gpos_ci
       NODE_ENV: test
       SEED_DEMO: "false"
       HOST: 127.0.0.1
