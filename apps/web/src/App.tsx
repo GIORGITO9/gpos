@@ -28,7 +28,6 @@ import {
   LogOut,
   Menu,
   ArrowRight,
-  Check,
   Store,
   Command,
   ShieldCheck,
@@ -38,6 +37,7 @@ import {
 } from "lucide-react";
 import { api, get, useSession, restore, can } from "./api";
 import { Button, Field, Loading, Modal, useToast } from "./ui";
+import { Landing } from "./Landing";
 const loadPages = () => import("./pages");
 const Dashboard = lazy(() =>
   loadPages().then((module) => ({ default: module.Dashboard })),
@@ -111,7 +111,7 @@ export default function App() {
   }, []);
   return (
     <Routes>
-      <Route path="/" element={<Landing />} />
+      <Route path="/" element={<Landing Brand={Brand} />} />
       <Route path="/login" element={<Auth />} />
       <Route path="/register" element={<Auth register />} />
       <Route
@@ -144,184 +144,6 @@ export default function App() {
       />
       <Route path="*" element={<Navigate to="/" />} />
     </Routes>
-  );
-}
-function Landing() {
-  return (
-    <div className="landing">
-      <nav>
-        <Brand />
-        <div>
-          <a href="#features">Tu operación</a>
-          <a href="#plans">Planes</a>
-          <Link to="/login">Iniciar sesión</Link>
-          <Link className="button primary" to="/register">
-            Probar gratis <ArrowRight size={16} />
-          </Link>
-        </div>
-      </nav>
-      <section className="landing-hero">
-        <h1>
-          Tu negocio.
-          <br />
-          <span>Todo en su lugar.</span>
-        </h1>
-        <p>
-          Del primer pedido al cierre de caja. Conecta tu salón, tu cocina y tus
-          ventas en una experiencia simple.
-        </p>
-        <div className="hero-actions">
-          <Link className="button primary large" to="/register">
-            Empezar mi prueba <ArrowRight size={18} />
-          </Link>
-          <Link className="button large" to="/login">
-            Entrar a mi negocio
-          </Link>
-        </div>
-        <span className="fine">
-          Para restaurantes, cafeterías y negocios de comidas.
-        </span>
-        <div className="product-preview">
-          <div className="preview-sidebar">
-            <Brand />
-            <span>Inicio</span>
-            <span>Punto de venta</span>
-            <span>Pedidos</span>
-            <span>Cocina</span>
-          </div>
-          <div className="preview-main">
-            <span className="preview-label">Así se conecta tu operación</span>
-            <h2>
-              Un buen día empieza
-              <br />
-              con todo en orden.
-            </h2>
-            <div className="preview-flow">
-              <div>
-                <ReceiptText />
-                <strong>Pedido</strong>
-                <span>Un solo registro</span>
-              </div>
-              <ArrowRight />
-              <div>
-                <ChefHat />
-                <strong>Cocina</strong>
-                <span>Preparación visible</span>
-              </div>
-              <ArrowRight />
-              <div>
-                <Wallet />
-                <strong>Venta</strong>
-                <span>Caja e inventario</span>
-              </div>
-            </div>
-          </div>
-        </div>
-      </section>
-      <section id="features" className="landing-features">
-        <h2>
-          Menos pendientes.
-          <br />
-          Más tiempo para tus clientes.
-        </h2>
-        <div>
-          {[
-            [
-              "Una venta, todo conectado",
-              "Mesas, domicilios y pedidos para recoger comparten el mismo flujo.",
-              ReceiptText,
-            ],
-            [
-              "Tu cocina, a su ritmo",
-              "Cada pedido avanza desde nuevo hasta listo. Sin perder los detalles.",
-              ChefHat,
-            ],
-            [
-              "Las cuentas claras",
-              "Pagos mixtos, movimientos de caja y reportes de ventas en un solo lugar.",
-              ChartNoAxesCombined,
-            ],
-          ].map(([title, copy, Icon]: any) => (
-            <article key={title}>
-              <Icon size={28} />
-              <h3>{title}</h3>
-              <p>{copy}</p>
-            </article>
-          ))}
-        </div>
-      </section>
-      <section id="plans" className="landing-plans">
-        <h2>Espacio para crecer.</h2>
-        <p>
-          Empieza con lo que necesitas. Amplía tu operación cuando estés listo.
-        </p>
-        <div>
-          {[
-            [
-              "Starter",
-              "Una operación simple",
-              "1 sucursal · 5 usuarios",
-              "POS, mesas, cocina y reportes",
-            ],
-            [
-              "Professional",
-              "Tu negocio conectado",
-              "3 sucursales · 20 usuarios",
-              "Inventario, compras y recetas",
-            ],
-            [
-              "Business",
-              "Más posibilidades",
-              "Límites configurables",
-              "Operación multisucursal",
-            ],
-          ].map((p) => (
-            <article key={p[0]}>
-              <h3>{p[0]}</h3>
-              <p>{p[1]}</p>
-              <strong>{p[2]}</strong>
-              <span>{p[3]}</span>
-              <Link className="button" to="/register">
-                Crear mi cuenta <ArrowRight size={16} />
-              </Link>
-            </article>
-          ))}
-        </div>
-        <small>
-          Las tarifas comerciales se configuran por el administrador de la
-          plataforma. Integraciones externas sujetas a activación.
-        </small>
-      </section>
-      <section className="faq">
-        <h2>Antes de empezar.</h2>
-        {[
-          [
-            "¿Necesito instalar algo?",
-            "No. GPOS funciona desde el navegador y requiere conexión a internet.",
-          ],
-          [
-            "¿Puedo usar varias sucursales?",
-            "Sí. Cada usuario accede únicamente a las sucursales que tiene asignadas, dentro de los límites de su plan.",
-          ],
-          [
-            "¿Incluye facturación electrónica y WhatsApp?",
-            "Estas integraciones requieren configurar un proveedor y sus credenciales. El comprobante POS no reemplaza un documento fiscal.",
-          ],
-        ].map(([a, b]) => (
-          <details key={a}>
-            <summary>{a}</summary>
-            <p>{b}</p>
-          </details>
-        ))}
-      </section>
-      <footer>
-        <Brand />
-        <span>Hecho para el ritmo de tu negocio.</span>
-        <Link to="/login">
-          Acceder <ArrowRight size={14} />
-        </Link>
-      </footer>
-    </div>
   );
 }
 function Auth({ register = false }: any) {
