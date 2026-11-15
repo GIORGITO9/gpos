@@ -1,0 +1,89 @@
+name: GPOS CI
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  build-and-test:
+    name: Compilar y probar con MySQL
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    services:
+      mysql:
+        image: mysql:8.0
+        env:
+          MYSQL_RANDOM_ROOT_PASSWORD: "yes"
+          MYSQL_DATABASE: gpos_ci
+          MYSQL_USER: gpos_ci
+          MYSQL_PASSWORD: ci-only-database-password
+        ports:
+          - 3306/tcp
+        options: >-
+          --health-cmd "mysql --protocol=TCP -u gpos_ci -pci-only-database-password gpos_ci -e 'SELECT 1'"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+
+    env:
+      DATABASE_URL: mysql://gpos_ci:ci-only-database-password@127.0.0.1:${{ job.services.mysql.ports[3306] }}/gpos_ci
+      NODE_ENV: test
+      SEED_DEMO: "false"
+      HOST: 127.0.0.1
+      PORT: 3000
+
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+
+      - name: Instalar dependencias
+        run: npm ci
+
+      - name: Preparar MySQL
+        run: |
+          npm run db:generate
+          npm run db:setup
+
+      - name: Compilar API y web
+        run: npm run build
+
+      - name: Ejecutar todas las pruebas, incluida la integración
+        env:
+          RUN_INTEGRATION: "true"
+          TEST_API_URL: http://127.0.0.1:3000/api/v1
+        run: |
+          export JWT_SECRET="$(openssl rand -hex 32)"
+          api_log="$RUNNER_TEMP/gpos-api.log"
+          node apps/api/dist/main.js >"$api_log" 2>&1 &
+          api_pid=$!
+
+          cleanup() {
+            status=$?
+            kill "$api_pid" 2>/dev/null || true
+            if [ "$status" -ne 0 ]; then
+              cat "$api_log"
+            fi
+            exit "$status"
+          }
+          trap cleanup EXIT
+
+          for attempt in {1..30}; do
+            if curl --fail --silent "$TEST_API_URL/health" >/dev/null; then
+              break
+            fi
+            kill -0 "$api_pid"
+            sleep 1
+          done
+          curl --fail --silent --show-error "$TEST_API_URL/health" >/dev/null
+
+          npm test
