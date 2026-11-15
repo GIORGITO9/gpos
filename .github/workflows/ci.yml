@@ -1,8 +1,9 @@
 name: GPOS CI
 
-on:
+"on":
   push:
   pull_request:
+  workflow_dispatch:
 
 permissions:
   contents: read
@@ -22,7 +23,7 @@ jobs:
           MYSQL_USER: gpos_ci
           MYSQL_PASSWORD: ci-only-database-password
         ports:
-          - 3307:3306
+          - "3307:3306"
         options: >-
           --health-cmd "mysql --protocol=TCP -u gpos_ci -pci-only-database-password gpos_ci -e 'SELECT 1'"
           --health-interval 5s
