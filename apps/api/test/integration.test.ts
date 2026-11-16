@@ -30,7 +30,27 @@ test(
   async () => {
     const suffix = randomUUID().slice(0, 8);
     const password = `QA-${randomUUID()}!aB9`;
+    const terms = await call("legal/terms");
+    assert.equal(terms.status, 200);
+    const acceptance = {
+      termsAccepted: true,
+      termsVersion: terms.data.version,
+    };
+    assert.equal(
+      (
+        await call("auth/register", {
+          name: "Cuenta sin aceptación",
+          business: "QA",
+          email: `no-terms-${suffix}@example.test`,
+          password,
+          termsAccepted: false,
+          termsVersion: terms.data.version,
+        })
+      ).status,
+      400,
+    );
     const a = await call("auth/register", {
+      ...acceptance,
       name: "Prueba A",
       business: "QA aislada " + suffix,
       email: `qa-${suffix}@example.test`,
@@ -42,6 +62,7 @@ test(
     const tokenA = token,
       branchA = branch;
     const b = await call("auth/register", {
+      ...acceptance,
       name: "Prueba B",
       business: "QA otra " + suffix,
       email: `qa-b-${suffix}@example.test`,
@@ -245,6 +266,14 @@ test(
     const { PrismaClient } = await import("@prisma/client");
     const db = new PrismaClient();
     try {
+      const recorded = await db.termsAcceptance.findUniqueOrThrow({
+        where: { tenantId: a.data.user.tenantId },
+      });
+      assert.equal(recorded.version, terms.data.version);
+      assert.equal(recorded.acceptedByEmail, a.data.user.email);
+      assert.deepEqual(JSON.parse(recorded.document), terms.data);
+      assert.ok(recorded.acceptedAt <= new Date());
+      assert.equal((await call("admin/complaints")).status, 403);
       const professional = await db.plan.findUniqueOrThrow({
         where: { name: "Professional" },
       });

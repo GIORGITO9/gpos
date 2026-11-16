@@ -665,6 +665,7 @@ export function Landing({ Brand }: { Brand: ComponentType }) {
       <footer className="landing-shell landing-footer">
         <Brand />
         <a href={salesLink("Información de GPOS")}>{salesEmail}</a>
+        <Link to="/legal">Información legal</Link>
         <Link to="/login">
           Iniciar sesión <ArrowRight size={16} aria-hidden="true" />
         </Link>

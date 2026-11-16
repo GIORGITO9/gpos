@@ -74,6 +74,9 @@ export async function adminCompanies(input: unknown) {
       include: {
         subscription: { include: { plan: { select: { name: true } } } },
         _count: { select: { users: true, branches: true } },
+        termsAcceptance: {
+          select: { version: true, acceptedAt: true, acceptedByEmail: true },
+        },
       },
       skip: (query.page - 1) * pageSize,
       take: pageSize,

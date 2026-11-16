@@ -16,6 +16,12 @@ En **Sitios web → gpos.webcodecol.com → Variables de entorno**, guarda `SMTP
 
 Tras aplicar las variables, solicita la recuperación desde **¿Olvidaste tu contraseña?** con una cuenta de prueba que pueda recibir correo. Verifica que el mensaje llegue, que permita cambiar la contraseña y que esta funcione al iniciar sesión. El enlace vence en 30 minutos y solo puede usarse una vez. El cambio cierra las sesiones de la cuenta.
 
+## Términos y reclamos
+
+Si cambia el texto de los términos, actualiza también su versión en `apps/api/src/legal-terms.ts`. Cada registro guarda una copia del documento aceptado, la versión, la fecha del servidor y la cuenta que aceptó. Super Admin puede descargar la constancia desde **Empresas → Administrar**. Las cuentas creadas antes de habilitar esta función figuran sin aceptación registrada.
+
+Registra en **Super Admin → Reclamos** la fecha en que se recibió el caso. Comunica el radicado al solicitante por el canal de origen, guarda cada seguimiento junto con su estado y registra la respuesta cuando la hayas enviado. El panel mantiene el historial interno y no envía avisos automáticos.
+
 ## Variables
 
 Configura en el entorno del servidor, nunca en Git:

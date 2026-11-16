@@ -14,6 +14,7 @@ import {
   Plus,
   Download,
   ChevronRight,
+  MessageSquare,
 } from "lucide-react";
 import { api, get, useSession, money, labels } from "./api";
 import {
@@ -30,12 +31,14 @@ import {
   useToast,
 } from "./ui";
 import { exportCsv } from "./catalog";
+import AdminComplaints from "./AdminComplaints";
 
 const sections = [
   ["overview", "Resumen", LayoutDashboard],
   ["companies", "Empresas", Store],
   ["plans", "Planes", Layers],
   ["activity", "Actividad", History],
+  ["complaints", "Reclamos", MessageSquare],
 ] as const;
 const statuses = ["TRIAL", "ACTIVA", "PAST_DUE", "SUSPENDIDA", "CANCELADA"];
 const adminTimestamp = new Intl.DateTimeFormat("es-CO", {
@@ -79,6 +82,11 @@ type Company = {
   status: string;
   createdAt: string;
   _count: { users: number; branches: number };
+  termsAcceptance: {
+    version: string;
+    acceptedAt: string;
+    acceptedByEmail: string;
+  } | null;
   subscription: {
     plan: { name: string };
     planId: string;
@@ -229,6 +237,38 @@ export default function Admin() {
     setDebouncedSearch("");
     setPage(1);
     navigate("/admin?section=companies");
+  }
+
+  async function downloadTerms(tenantId: string) {
+    setBusy(true);
+    setFormError("");
+    try {
+      const acceptance = await get("admin/tenants/" + tenantId + "/terms");
+      if (!acceptance)
+        throw new Error("Esta empresa aún no tiene una constancia.");
+      const payload = {
+        ...acceptance,
+        document: JSON.parse(acceptance.document),
+      };
+      const url = URL.createObjectURL(
+        new Blob([JSON.stringify(payload, null, 2)], {
+          type: "application/json",
+        }),
+      );
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = "gpos-aceptacion-" + acceptance.version + ".json";
+      link.click();
+      URL.revokeObjectURL(url);
+    } catch (error) {
+      toast(
+        error instanceof Error
+          ? error.message
+          : "No fue posible descargar la constancia.",
+      );
+    } finally {
+      setBusy(false);
+    }
   }
 
   async function saveTenant(e: React.FormEvent<HTMLFormElement>) {
@@ -664,6 +704,7 @@ export default function Admin() {
               ))}
             </section>
           )}
+          {section === "complaints" && <AdminComplaints />}
           {section === "activity" && (
             <section className="panel">
               <div className="panel-title">
@@ -748,7 +789,35 @@ export default function Admin() {
               <dt>Registro</dt>
               <dd>{adminRenewalDate.format(new Date(editing.createdAt))}</dd>
             </div>
+            <div>
+              <dt>Términos aceptados</dt>
+              <dd>
+                {editing.termsAcceptance
+                  ? "Versión " + editing.termsAcceptance.version
+                  : "Sin aceptación registrada"}
+              </dd>
+            </div>
+            {editing.termsAcceptance && (
+              <div>
+                <dt>Fecha y cuenta</dt>
+                <dd>
+                  {adminTimestamp.format(
+                    new Date(editing.termsAcceptance.acceptedAt),
+                  )}{" "}
+                  · {editing.termsAcceptance.acceptedByEmail}
+                </dd>
+              </div>
+            )}
           </dl>
+          {editing.termsAcceptance && (
+            <Button
+              type="button"
+              disabled={busy}
+              onClick={() => void downloadTerms(editing.id)}
+            >
+              <Download size={16} /> Descargar constancia
+            </Button>
+          )}
           {editing.subscription && (
             <form onSubmit={saveTenant}>
               <Field label="Estado de empresa">

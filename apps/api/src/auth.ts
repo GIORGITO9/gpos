@@ -10,6 +10,7 @@ import jwt from "jsonwebtoken";
 import bcrypt from "bcryptjs";
 import { z } from "zod";
 import { db, transaction } from "./db";
+import { terms } from "./legal-terms";
 import { allowed, roles } from "./domain";
 import { recoveryMailer, recoveryMinutes } from "./recovery-mail";
 export function trialDays() {
@@ -282,9 +283,18 @@ export async function authAction(
         name: z.string().min(2).max(100),
         email: z.string().email(),
         password: z.string().min(10).max(128),
+        termsAccepted: z.literal(true, {
+          error: "Debes aceptar los términos de uso",
+        }),
+        termsVersion: z.string(),
         business: z.string().min(2).max(100),
       })
       .parse(body);
+    if (b.termsVersion !== terms.version) {
+      throw new BadRequestException(
+        "Los términos se actualizaron. Revísalos y vuelve a aceptar.",
+      );
+    }
     const passwordHash = await bcrypt.hash(b.password, 12);
     const plan = await db.plan.findFirst({
       where: { availableForSignup: true },
@@ -314,7 +324,7 @@ export async function authAction(
         },
         include: { branches: true },
       });
-      return tx.user.create({
+      const user = await tx.user.create({
         data: {
           name: b.name,
           email: b.email.toLowerCase(),
@@ -325,6 +335,16 @@ export async function authAction(
           branches: { create: { branchId: tenant.branches[0].id } },
         },
       });
+      await tx.termsAcceptance.create({
+        data: {
+          tenantId: tenant.id,
+          acceptedById: user.id,
+          acceptedByEmail: user.email,
+          version: terms.version,
+          document: JSON.stringify(terms),
+        },
+      });
+      return user;
     });
     return issue(u, res);
   }

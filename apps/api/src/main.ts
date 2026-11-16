@@ -41,6 +41,8 @@ import {
 import { resources, list, save, remove } from "./catalog";
 import * as op from "./operations";
 import { allowed } from "./domain";
+import { terms } from "./legal-terms";
+import * as complaints from "./complaints";
 import {
   adminActivity,
   adminCompanies,
@@ -113,6 +115,9 @@ class Api {
       orderBy: { price: "asc" },
     });
     return { ...ok(plans), trialDays: trialDays() };
+  }
+  @Get("legal/terms") legalTerms() {
+    return ok(terms);
   }
   @Post("auth/:action") async auth(
     @Param("action") action: string,
@@ -760,6 +765,44 @@ class Api {
         return plan;
       }),
     );
+  }
+  @Get("admin/complaints") async complaintList(
+    @Req() req: Request,
+    @Query() query: unknown,
+  ) {
+    await platformIdentity(req);
+    return ok(await complaints.listComplaints(query));
+  }
+  @Get("admin/complaints/:id") async complaintDetail(
+    @Req() req: Request,
+    @Param("id") id: string,
+  ) {
+    await platformIdentity(req);
+    return ok(await complaints.getComplaint(id));
+  }
+  @Post("admin/complaints") async complaintCreate(
+    @Req() req: Request,
+    @Body() body: unknown,
+  ) {
+    return ok(
+      await complaints.createComplaint(await platformIdentity(req), body),
+    );
+  }
+  @Post("admin/complaints/:id/events") async complaintUpdate(
+    @Req() req: Request,
+    @Param("id") id: string,
+    @Body() body: unknown,
+  ) {
+    return ok(
+      await complaints.addComplaintEvent(await platformIdentity(req), id, body),
+    );
+  }
+  @Get("admin/tenants/:id/terms") async acceptedTerms(
+    @Req() req: Request,
+    @Param("id") tenantId: string,
+  ) {
+    await platformIdentity(req);
+    return ok(await db.termsAcceptance.findUnique({ where: { tenantId } }));
   }
   @Get(":resource") async catalog(
     @Param("resource") resource: string,

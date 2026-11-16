@@ -1,0 +1,135 @@
+.legal-layout {
+  min-height: 100dvh;
+  color: var(--graphite);
+  background: var(--surface);
+}
+.legal-shell {
+  width: min(68rem, calc(100% - 2rem));
+  margin-inline: auto;
+}
+.legal-header {
+  min-height: 76px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  border-bottom: 1px solid var(--line);
+}
+.legal-header .button {
+  min-height: 44px;
+}
+.legal-intro {
+  padding-block: clamp(32px, 6vw, 72px) 30px;
+}
+.legal-intro h1 {
+  font-size: clamp(2.1rem, 5vw, 3.6rem);
+  line-height: 1.03;
+  letter-spacing: -0.038em;
+  margin: 0;
+}
+.legal-intro p {
+  color: var(--muted-strong);
+  margin: 14px 0 0;
+  max-width: 65ch;
+}
+.legal-intro .legal-draft {
+  color: var(--pending-text);
+  background: var(--pending-bg);
+  padding: 10px 14px;
+  border-radius: var(--radius-compact);
+}
+.legal-reading {
+  display: grid;
+  grid-template-columns: 15rem minmax(0, 1fr);
+  gap: clamp(24px, 5vw, 70px);
+  padding-bottom: 48px;
+}
+.legal-reading nav {
+  align-self: start;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-feedback);
+}
+.legal-reading nav a {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 48px;
+  padding: 7px 12px;
+  font-weight: 600;
+}
+.legal-reading nav a + a {
+  border-top: 1px solid var(--line);
+}
+.legal-reading nav a:hover {
+  color: var(--blue);
+}
+.legal-documents {
+  max-width: 72ch;
+  line-height: 1.65;
+}
+.legal-documents :is(article, section) {
+  scroll-margin-top: 18px;
+  padding-bottom: 22px;
+}
+.legal-documents :is(article, section) + :is(article, section) {
+  border-top: 1px solid var(--line);
+  padding-top: 24px;
+}
+.legal-documents h2 {
+  margin: 0 0 14px;
+  font-size: 1.65rem;
+  line-height: 1.2;
+}
+.legal-documents h3 {
+  margin: 22px 0 5px;
+  font-size: 1rem;
+}
+.legal-documents p {
+  margin: 0 0 10px;
+}
+.legal-documents ul {
+  padding-inline-start: 22px;
+}
+.legal-documents li + li {
+  margin-top: 8px;
+}
+.legal-documents a,
+.auth-legal a {
+  color: var(--blue);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  overflow-wrap: anywhere;
+}
+.legal-operator dt {
+  font-weight: 600;
+}
+.legal-operator dd {
+  margin: 0 0 7px;
+}
+.auth-legal {
+  font-size: var(--text-label);
+}
+@media (max-width: 740px) {
+  .legal-reading {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+.auth-terms {
+  margin-block: 12px 16px;
+}
+.auth-terms label {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  min-height: 44px;
+}
+.auth-terms input[type="checkbox"] {
+  min-height: auto;
+  width: 18px;
+  height: 18px;
+  flex: none;
+}
+.auth-terms > a {
+  margin-left: 27px;
+}

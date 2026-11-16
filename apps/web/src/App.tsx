@@ -1,3 +1,5 @@
+import { localLegalPreview, useTerms } from "./legal-client";
+import "./legal.css";
 import {
   lazy,
   Suspense,
@@ -75,6 +77,7 @@ const SettingsPage = lazy(() =>
   loadPages().then((module) => ({ default: module.SettingsPage })),
 );
 const Admin = lazy(() => import("./admin"));
+const Legal = lazy(() => import("./Legal"));
 const Onboarding = lazy(() =>
   loadPages().then((module) => ({ default: module.Onboarding })),
 );
@@ -118,6 +121,7 @@ export default function App() {
   return (
     <Routes>
       <Route path="/" element={<Landing Brand={Brand} />} />
+      <Route path="/legal" element={<Legal Brand={Brand} />} />
       <Route path="/login" element={<Auth />} />
       <Route path="/register" element={<Auth register />} />
       <Route
@@ -167,13 +171,26 @@ function Auth({ register = false }: any) {
     qc = useQueryClient();
   const [pending, setPending] = useState(false);
   const [error, setError] = useState("");
+  const terms = useTerms(register);
+  const [acceptedVersion, setAcceptedVersion] = useState("");
   async function submit(e: any) {
     e.preventDefault();
     setPending(true);
     setError("");
     const body = Object.fromEntries(new FormData(e.currentTarget));
     try {
-      const j = await api("auth/" + (register ? "register" : "login"), body);
+      if (register && (!terms.data || acceptedVersion !== terms.data.version)) {
+        throw new Error("Revisa y acepta los términos de uso.");
+      }
+      const registration = {
+        ...body,
+        termsAccepted: true,
+        termsVersion: acceptedVersion,
+      };
+      const j = await api(
+        "auth/" + (register ? "register" : "login"),
+        register ? registration : body,
+      );
       await qc.cancelQueries();
       qc.clear();
       s.setSession(j.data);
@@ -188,6 +205,7 @@ function Auth({ register = false }: any) {
       if (register) toast("Tu negocio está listo para configurarse");
     } catch (e: any) {
       setError(e.message);
+      if (register) void terms.refetch();
     } finally {
       setPending(false);
     }
@@ -229,12 +247,56 @@ function Auth({ register = false }: any) {
             <Link to="/recuperar-contrasena">¿Olvidaste tu contraseña?</Link>
           </p>
         )}
+        {register &&
+          (terms.data ? (
+            <div className="auth-legal auth-terms">
+              <label>
+                <input
+                  type="checkbox"
+                  required
+                  checked={acceptedVersion === terms.data.version}
+                  onChange={(e) =>
+                    setAcceptedVersion(
+                      e.target.checked ? terms.data.version : "",
+                    )
+                  }
+                />
+                <span>
+                  Acepto los términos de uso de GPOS (versión{" "}
+                  {terms.data.version}).
+                </span>
+              </label>
+              <Link to="/legal#terminos" target="_blank" rel="noopener">
+                Leer los términos de uso
+              </Link>
+            </div>
+          ) : terms.isError ? (
+            <p role="alert">
+              No se pudieron cargar los términos.{" "}
+              <button
+                type="button"
+                className="button"
+                onClick={() => void terms.refetch()}
+              >
+                Reintentar
+              </button>
+            </p>
+          ) : (
+            <p role="status">Cargando términos de uso…</p>
+          ))}
         {error && (
           <p className="form-error" role="alert">
             {error}
           </p>
         )}
-        <Button variant="primary" disabled={pending}>
+        <Button
+          variant="primary"
+          disabled={
+            pending ||
+            (register &&
+              (!terms.data || acceptedVersion !== terms.data.version))
+          }
+        >
           {pending
             ? "Un momento…"
             : register
@@ -242,6 +304,21 @@ function Auth({ register = false }: any) {
               : "Iniciar sesión"}
           <ArrowRight size={18} />
         </Button>
+        {register && (
+          <p className="auth-legal">
+            GIGATEC CÚCUTA usa tus datos para crear la cuenta, gestionar el
+            acceso y administrar la suscripción.{" "}
+            <Link to="/legal#contacto" target="_blank" rel="noopener">
+              Contacto de datos personales
+            </Link>
+            {localLegalPreview && (
+              <>
+                {" "}
+                · <Link to="/legal#privacidad">Borrador de privacidad</Link>
+              </>
+            )}
+          </p>
+        )}
         <p className="auth-switch">
           {register ? "¿Ya tienes una cuenta?" : "¿Primera vez aquí?"}{" "}
           <Link to={register ? "/login" : "/register"}>
