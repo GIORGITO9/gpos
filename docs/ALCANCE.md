@@ -20,7 +20,7 @@ Esta entrega es una implementación operativa local del núcleo SaaS/POS. No equ
 | Importación | CSV/XLSX: productos, clientes, ingredientes | Existencias se registran con movimientos; no importa saldos directamente. Hasta 500 filas; transacción por fila, no por archivo |
 | Exportación | CSV de página y ventas, Excel de ventas, impresión/PDF | Reportes limitados a 10.000 ventas por consulta; exportación masiva en segundo plano pendiente |
 | Configuración | Datos del negocio y tasa fiscal en puntos básicos | Una tasa global; no es motor tributario por categoría, régimen o documento fiscal |
-| Integraciones | Canales manuales y puntos de extensión documentados | No hay webhook WhatsApp, facturación DIAN, cobro de pasarela, email o SMS real |
+| Integraciones | Canales manuales, recuperación de contraseña vía SMTP y puntos de extensión documentados | Sin webhook WhatsApp, facturación DIAN, cobro de pasarela ni SMS |
 | Tiempo real | Polling sin WebSockets | WebSockets, Redis y workers corresponden a fases futuras |
 | Offline | Manejo de errores de conexión | No hay cola offline, PWA sincronizada ni IndexedDB |
 | Hosting | Build, migraciones, servidor web integrado opcional y guía | No desplegado; faltan cuenta, plan, dominio, secretos y verificación del entorno de producción |

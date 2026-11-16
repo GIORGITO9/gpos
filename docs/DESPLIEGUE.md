@@ -10,7 +10,11 @@ Se requiere un entorno que ejecute procesos Node.js y permita conectar con MySQL
 4. Añade las variables indicadas abajo en hPanel. Usa una base nueva para GPOS y conserva el puerto que asigne Hostinger. Configura `SERVE_WEB=true`, `NODE_ENV=production`, `FRONTEND_URL` con el dominio HTTPS definitivo y `NPM_CONFIG_INCLUDE=dev` para que la compilación tenga Prisma CLI, TypeScript y Vite.
 5. Revisa el log de compilación y verifica `/api/v1/health`, el acceso por HTTPS y un pedido de prueba. El comando aplica las migraciones pendientes y crea los planes iniciales sin datos demo ni sobrescribir planes existentes.
 
-La sección **Emails** de hPanel permite identificar el buzón remitente y consultar su configuración. Para **Hostinger Email**, la configuración de salida habitual es `smtp.hostinger.com:465` con TLS. La recuperación de contraseñas todavía requiere el flujo de solicitud y cambio de contraseña en GPOS, además de una prueba de entrega con ese buzón. Las credenciales del buzón se configuran en el entorno del servidor.
+## Recuperación de contraseñas
+
+En **Sitios web → gpos.webcodecol.com → Variables de entorno**, guarda `SMTP_PASSWORD` con la contraseña del buzón `no-reply@webcodecol.com`. GPOS usa ese remitente y el servidor `smtp.hostinger.com:465` (TLS) por defecto. Para usar otro buzón o servidor, configura `SMTP_USER`, `SMTP_HOST` y `SMTP_PORT`. El primer origen de `FRONTEND_URL` debe ser el dominio público HTTPS de GPOS para construir el enlace.
+
+Tras aplicar las variables, solicita la recuperación desde **¿Olvidaste tu contraseña?** con una cuenta de prueba que pueda recibir correo. Verifica que el mensaje llegue, que permita cambiar la contraseña y que esta funcione al iniciar sesión. El enlace vence en 30 minutos y solo puede usarse una vez. El cambio cierra las sesiones de la cuenta.
 
 ## Variables
 

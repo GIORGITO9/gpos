@@ -1,4 +1,12 @@
-import { lazy, Suspense, useEffect, useState, useRef } from "react";
+import {
+  lazy,
+  Suspense,
+  useEffect,
+  useState,
+  useRef,
+  type ReactNode,
+  type FormEvent,
+} from "react";
 import {
   Routes,
   Route,
@@ -115,6 +123,14 @@ export default function App() {
       <Route path="/login" element={<Auth />} />
       <Route path="/register" element={<Auth register />} />
       <Route
+        path="/recuperar-contrasena"
+        element={<PasswordRecovery key="request" />}
+      />
+      <Route
+        path="/restablecer-contrasena"
+        element={<PasswordRecovery key="reset" reset />}
+      />
+      <Route
         path="/app/*"
         element={
           !s.ready ? (
@@ -179,6 +195,73 @@ function Auth({ register = false }: any) {
     }
   }
   return (
+    <AuthFrame>
+      <form onSubmit={submit}>
+        <h1>{register ? "Dale espacio a tu negocio." : "Qué bueno verte."}</h1>
+        <p>
+          {register
+            ? "Crea tu cuenta y empieza a organizar tu operación."
+            : "Ingresa para continuar con tu operación."}
+        </p>
+        {register && (
+          <>
+            <Field label="Tu nombre" name="name" required autoComplete="name" />
+            <Field label="Nombre del negocio" name="business" required />
+          </>
+        )}
+        <Field
+          label="Correo electrónico"
+          name="email"
+          type="email"
+          autoComplete="email"
+          required
+        />
+        <Field
+          label="Contraseña"
+          name="password"
+          type="password"
+          minLength={register ? 10 : 1}
+          autoComplete={register ? "new-password" : "current-password"}
+          required
+        />
+        {register ? (
+          <small>Utiliza al menos 10 caracteres.</small>
+        ) : (
+          <p className="auth-switch">
+            <Link to="/recuperar-contrasena">¿Olvidaste tu contraseña?</Link>
+          </p>
+        )}
+        {error && (
+          <p className="form-error" role="alert">
+            {error}
+          </p>
+        )}
+        <Button variant="primary" disabled={pending}>
+          {pending
+            ? "Un momento…"
+            : register
+              ? "Crear mi negocio"
+              : "Iniciar sesión"}
+          <ArrowRight size={18} />
+        </Button>
+        <p className="auth-switch">
+          {register ? "¿Ya tienes una cuenta?" : "¿Primera vez aquí?"}{" "}
+          <Link to={register ? "/login" : "/register"}>
+            {register ? "Iniciar sesión" : "Crear mi negocio"}
+          </Link>
+        </p>
+      </form>
+    </AuthFrame>
+  );
+}
+function AuthFrame({
+  children,
+  recovery = false,
+}: {
+  children: ReactNode;
+  recovery?: boolean;
+}) {
+  return (
     <div className="auth-layout">
       <div className="auth-story">
         <Brand />
@@ -200,70 +283,139 @@ function Auth({ register = false }: any) {
         <span>GPOS · Hecho para negocios de comidas</span>
       </div>
       <main className="auth-main">
-        <Link className="back-link" to="/">
-          Volver al inicio
+        <Link
+          className="back-link"
+          to={recovery ? "/login" : "/"}
+          replace={recovery}
+        >
+          {recovery ? "Volver a iniciar sesión" : "Volver al inicio"}
         </Link>
-        <form onSubmit={submit}>
-          <h1>
-            {register ? "Dale espacio a tu negocio." : "Qué bueno verte."}
-          </h1>
-          <p>
-            {register
-              ? "Crea tu cuenta y empieza a organizar tu operación."
-              : "Ingresa para continuar con tu operación."}
-          </p>
-          {register && (
-            <>
-              <Field
-                label="Tu nombre"
-                name="name"
-                required
-                autoComplete="name"
-              />
-              <Field label="Nombre del negocio" name="business" required />
-            </>
-          )}
-          <Field
-            label="Correo electrónico"
-            name="email"
-            type="email"
-            autoComplete="email"
-            required
-          />
-          <Field
-            label="Contraseña"
-            name="password"
-            type="password"
-            minLength={register ? 10 : 1}
-            autoComplete={register ? "new-password" : "current-password"}
-            required
-          />
-          {register && <small>Utiliza al menos 10 caracteres.</small>}
-          {error && (
-            <p className="form-error" role="alert">
-              {error}
-            </p>
-          )}
-          <Button variant="primary" disabled={pending}>
-            {pending
-              ? "Un momento…"
-              : register
-                ? "Crear mi negocio"
-                : "Iniciar sesión"}
-            <ArrowRight size={18} />
-          </Button>
-          <p className="auth-switch">
-            {register ? "¿Ya tienes una cuenta?" : "¿Primera vez aquí?"}{" "}
-            <Link to={register ? "/login" : "/register"}>
-              {register ? "Iniciar sesión" : "Crear mi negocio"}
-            </Link>
-          </p>
-        </form>
+        {children}
         <span className="auth-bottom">
           <ShieldCheck size={15} /> Cada negocio, su propio espacio.
         </span>
       </main>
     </div>
+  );
+}
+function PasswordRecovery({ reset = false }: { reset?: boolean }) {
+  const { hash } = useLocation();
+  const token = new URLSearchParams(hash.slice(1)).get("token");
+  const invalid = reset && !/^[a-f0-9]{64}$/.test(token ?? "");
+  const [pending, setPending] = useState(false);
+  const [completed, setCompleted] = useState(false);
+  const [error, setError] = useState("");
+  const destination = reset && !completed ? "/recuperar-contrasena" : "/login";
+
+  async function submit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (pending || invalid) return;
+    const form = new FormData(event.currentTarget);
+    const password = String(form.get("password") ?? "");
+    setError("");
+    if (reset && password !== form.get("confirmation")) {
+      setError("Las contraseñas no coinciden.");
+      return;
+    }
+    if (reset && new TextEncoder().encode(password).length > 72) {
+      setError("La contraseña supera el tamaño permitido. Usa una más corta.");
+      return;
+    }
+    setPending(true);
+    try {
+      await api(
+        reset ? "auth/reset-password" : "auth/forgot-password",
+        reset
+          ? { token, password }
+          : { email: String(form.get("email") ?? "").trim() },
+      );
+      if (reset) useSession.getState().clear();
+      setCompleted(true);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Inténtalo de nuevo.");
+    } finally {
+      setPending(false);
+    }
+  }
+
+  return (
+    <AuthFrame recovery>
+      <form onSubmit={submit} key={String(reset)}>
+        <h1>{reset ? "Restablece tu contraseña" : "Recupera tu contraseña"}</h1>
+        {completed || invalid ? (
+          <>
+            <p role={invalid ? "alert" : "status"}>
+              {invalid
+                ? "El enlace no es válido. Solicita uno nuevo."
+                : reset
+                  ? "Tu contraseña cambió. Inicia sesión con la nueva."
+                  : "Si hay una cuenta con ese correo, te enviaremos un enlace. Revisa también el correo no deseado."}
+            </p>
+            <Link className="button primary" to={destination} replace>
+              {invalid ? "Solicitar otro enlace" : "Ir a iniciar sesión"}
+            </Link>
+          </>
+        ) : (
+          <>
+            <p>
+              {reset
+                ? "Elige una contraseña de al menos 10 caracteres."
+                : "Ingresa el correo de tu cuenta para solicitar un enlace de recuperación."}
+            </p>
+            {reset ? (
+              <>
+                <Field
+                  label="Nueva contraseña"
+                  name="password"
+                  type="password"
+                  minLength={10}
+                  maxLength={72}
+                  autoComplete="new-password"
+                  required
+                />
+                <Field
+                  label="Confirma la contraseña"
+                  name="confirmation"
+                  type="password"
+                  minLength={10}
+                  maxLength={72}
+                  autoComplete="new-password"
+                  required
+                />
+              </>
+            ) : (
+              <Field
+                label="Correo electrónico"
+                name="email"
+                type="email"
+                maxLength={191}
+                autoComplete="email"
+                required
+              />
+            )}
+            {error && (
+              <p className="form-error" role="alert">
+                {error}
+              </p>
+            )}
+            <Button type="submit" variant="primary" disabled={pending}>
+              {pending
+                ? "Un momento…"
+                : reset
+                  ? "Cambiar contraseña"
+                  : "Enviar enlace"}
+            </Button>
+            {reset && error && (
+              <p className="auth-switch">
+                <Link to="/recuperar-contrasena" replace>
+                  Solicitar otro enlace
+                </Link>
+              </p>
+            )}
+          </>
+        )}
+      </form>
+    </AuthFrame>
   );
 }
 function Shell() {

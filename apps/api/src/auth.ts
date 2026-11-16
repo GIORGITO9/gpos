@@ -2,6 +2,7 @@ import {
   UnauthorizedException,
   ForbiddenException,
   BadRequestException,
+  ServiceUnavailableException,
 } from "@nestjs/common";
 import { Request, Response } from "express";
 import { createHash, randomBytes } from "node:crypto";
@@ -10,6 +11,7 @@ import bcrypt from "bcryptjs";
 import { z } from "zod";
 import { db, transaction } from "./db";
 import { allowed, roles } from "./domain";
+import { recoveryMailer, recoveryMinutes } from "./recovery-mail";
 export const hash = (s: string) => createHash("sha256").update(s).digest("hex");
 export async function audit(
   tx: any,
@@ -120,12 +122,23 @@ export async function publicUser(u: any) {
 }
 async function issue(u: any, res: Response) {
   const raw = randomBytes(48).toString("hex");
-  const session = await db.refreshSession.create({
-    data: {
-      userId: u.id,
-      tokenHash: hash(raw),
-      expiresAt: new Date(Date.now() + 7 * 86400000),
-    },
+  const { user, session } = await transaction(async (tx) => {
+    const user = await tx.user.findFirst({
+      where: { id: u.id, passwordHash: u.passwordHash, active: true },
+      include: {
+        branches: { include: { branch: true } },
+        tenant: { include: { subscription: { include: { plan: true } } } },
+      },
+    });
+    if (!user) throw new UnauthorizedException("Inicia sesión de nuevo");
+    const session = await tx.refreshSession.create({
+      data: {
+        userId: user.id,
+        tokenHash: hash(raw),
+        expiresAt: new Date(Date.now() + 7 * 86400000),
+      },
+    });
+    return { user, session };
   });
   res.cookie("gpos_refresh", raw, {
     httpOnly: true,
@@ -133,13 +146,6 @@ async function issue(u: any, res: Response) {
     sameSite: "strict",
     path: "/api/v1/auth",
     maxAge: 7 * 86400000,
-  });
-  const user = await db.user.findUnique({
-    where: { id: u.id },
-    include: {
-      branches: { include: { branch: true } },
-      tenant: { include: { subscription: { include: { plan: true } } } },
-    },
   });
   return {
     access_token: jwt.sign(
@@ -150,12 +156,110 @@ async function issue(u: any, res: Response) {
     user: await publicUser(user),
   };
 }
+
+async function deliverRecovery(
+  email: string,
+  send: NonNullable<ReturnType<typeof recoveryMailer>>,
+) {
+  const token = randomBytes(32).toString("hex");
+  const tokenHash = hash(token);
+  const user = await transaction(async (tx) => {
+    const account = await tx.user.findUnique({
+      where: { email },
+      select: { id: true, email: true, active: true },
+    });
+    if (!account?.active) return;
+
+    const createdAt = new Date();
+    const data = {
+      tokenHash,
+      createdAt,
+      expiresAt: new Date(createdAt.getTime() + recoveryMinutes * 60_000),
+    };
+    const updated = await tx.passwordReset.updateMany({
+      where: {
+        userId: account.id,
+        createdAt: { lte: new Date(createdAt.getTime() - 120_000) },
+      },
+      data,
+    });
+    if (updated.count) return account;
+    const inserted = await tx.passwordReset.createMany({
+      data: [{ userId: account.id, ...data }],
+      skipDuplicates: true,
+    });
+    if (inserted.count) return account;
+  });
+  if (!user) return;
+
+  try {
+    await send(user.email, token);
+  } catch (error) {
+    await db.passwordReset.deleteMany({ where: { tokenHash } });
+    throw error;
+  }
+}
+
+async function resetPassword(body: unknown) {
+  const { token, password } = z
+    .object({
+      token: z.string().regex(/^[a-f0-9]{64}$/, "El enlace no es válido"),
+      password: z
+        .string()
+        .min(10)
+        .max(72)
+        .refine(
+          (value) => Buffer.byteLength(value, "utf8") <= 72,
+          "La contraseña supera el tamaño permitido",
+        ),
+    })
+    .parse(body);
+  const tokenHash = hash(token);
+  const invalidLink = () =>
+    new BadRequestException(
+      "El enlace venció o ya se usó. Solicita uno nuevo.",
+    );
+  const candidate = await db.passwordReset.findUnique({ where: { tokenHash } });
+  if (!candidate || candidate.expiresAt <= new Date()) throw invalidLink();
+  const passwordHash = await bcrypt.hash(password, 12);
+
+  await transaction(async (tx) => {
+    const consumed = await tx.passwordReset.deleteMany({
+      where: { tokenHash, expiresAt: { gt: new Date() } },
+    });
+    if (!consumed.count) throw invalidLink();
+    const changed = await tx.user.updateMany({
+      where: { id: candidate.userId, active: true },
+      data: { passwordHash },
+    });
+    if (!changed.count) throw invalidLink();
+    await tx.refreshSession.deleteMany({ where: { userId: candidate.userId } });
+  });
+  return { updated: true };
+}
 export async function authAction(
   action: string,
   body: any,
   req: Request,
   res: Response,
 ) {
+  if (action === "forgot-password") {
+    const { email } = z
+      .object({ email: z.string().trim().email().max(191) })
+      .parse(body);
+    const send = recoveryMailer();
+    if (!send)
+      throw new ServiceUnavailableException(
+        "La recuperación por correo aún no está disponible.",
+      );
+    void deliverRecovery(email.toLowerCase(), send).catch(() => {
+      console.warn(
+        "No se pudo completar un envío de recuperación de contraseña.",
+      );
+    });
+    return { accepted: true };
+  }
+  if (action === "reset-password") return resetPassword(body);
   if (action === "login") {
     const b = z
       .object({ email: z.string().email(), password: z.string().min(1) })

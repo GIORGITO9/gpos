@@ -311,6 +311,11 @@ export async function save(
       : await model.create({
           data: { ...data, ...scope(resource, u, branchId) },
         });
+    if (resource === "users" && id) {
+      await tx.passwordReset.deleteMany({ where: { userId: id } });
+      if (data.passwordHash)
+        await tx.refreshSession.deleteMany({ where: { userId: id } });
+    }
     if (resource === "branches" && !id) {
       await tx.userBranch.create({ data: { userId: u.id, branchId: row.id } });
       await tx.cashRegister.create({
