@@ -32,6 +32,7 @@ import { z, ZodError } from "zod";
 import { db, transaction } from "./db";
 import {
   authAction,
+  trialDays,
   identity,
   branchFor,
   platformIdentity,
@@ -100,12 +101,18 @@ class Api {
     return ok({ status: "ok" });
   }
   @Get("plans") async plans() {
-    return ok(
-      await db.plan.findMany({
-        where: { availableForSignup: true },
-        orderBy: { price: "asc" },
-      }),
-    );
+    const plans = await db.plan.findMany({
+      where: { availableForSignup: true },
+      select: {
+        id: true,
+        name: true,
+        price: true,
+        features: true,
+        limits: true,
+      },
+      orderBy: { price: "asc" },
+    });
+    return { ...ok(plans), trialDays: trialDays() };
   }
   @Post("auth/:action") async auth(
     @Param("action") action: string,

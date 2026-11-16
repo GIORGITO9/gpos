@@ -525,3 +525,198 @@
     transition: none;
   }
 }
+
+.landing-hero-band {
+  background: #eef4fe;
+  overflow: clip;
+}
+.landing-hero.landing-sales-hero {
+  padding-block: clamp(38px, 6vw, 86px);
+  grid-template-columns: minmax(0, 0.88fr) minmax(0, 1.12fr);
+}
+.landing-sales-hero .landing-intro h1 {
+  max-width: 14ch;
+  font-size: clamp(2.5rem, 4.3vw, 4.35rem);
+  text-wrap: balance;
+}
+.landing-product {
+  position: relative;
+  margin: 0;
+  padding: 0 10% 0 0;
+  min-width: 0;
+  isolation: isolate;
+}
+.landing-product-pos,
+.landing-product-phone {
+  display: block;
+  height: auto;
+  background: var(--landing-navy);
+  border: 6px solid var(--landing-navy);
+  box-shadow: 0 24px 48px -25px #15254199;
+}
+.landing-product-pos {
+  width: 100%;
+  border-radius: 17px;
+  animation: landing-screen-arrive 570ms var(--motion-ease) both;
+}
+.landing-product-phone {
+  position: absolute;
+  z-index: 1;
+  left: 78%;
+  bottom: 10%;
+  width: 22%;
+  border-width: 4px;
+  border-radius: 14px;
+  animation: landing-phone-arrive 650ms var(--motion-ease) 90ms both;
+}
+.landing-product figcaption {
+  margin-top: 16px;
+  color: var(--muted-strong);
+  font-size: var(--text-label);
+}
+@keyframes landing-screen-arrive {
+  from {
+    transform: translateY(12px);
+    opacity: 0.84;
+  }
+  to {
+    transform: translateY(0);
+    opacity: 1;
+  }
+}
+@keyframes landing-phone-arrive {
+  from {
+    transform: translate(8px, 15px);
+    opacity: 0.78;
+  }
+  to {
+    transform: translate(0, 0);
+    opacity: 1;
+  }
+}
+.landing-demo-band {
+  display: grid;
+  grid-template-columns: minmax(0, 0.8fr) minmax(0, 1fr);
+  gap: clamp(20px, 5vw, 78px);
+  align-items: center;
+  padding-block: clamp(44px, 7vw, 90px);
+  border-bottom: 1px solid var(--line);
+}
+.landing-demo-intro h2,
+.landing-close h2 {
+  font-size: clamp(1.9rem, 3.8vw, 3.2rem);
+  line-height: 1.1;
+  letter-spacing: -0.035em;
+  margin: 0;
+  text-wrap: balance;
+}
+.landing-demo-intro p,
+.landing-close p {
+  color: var(--muted-strong);
+  margin: 15px 0 0;
+  max-width: 42ch;
+}
+.landing-demo-intro ol,
+.landing-plan-features {
+  list-style: none;
+  margin: 20px 0 0;
+  padding: 0;
+  display: grid;
+  gap: 10px;
+}
+.landing-demo-intro li,
+.landing-plan-features li {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+}
+.landing-demo-intro li svg,
+.landing-plan-features svg {
+  align-self: center;
+  color: var(--blue);
+  flex: none;
+}
+.landing-module-image {
+  display: block;
+  max-width: 100%;
+  height: auto;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-feedback);
+  margin: 20px 0;
+}
+.landing-recipe-result {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 10px 12px;
+  margin-bottom: 11px;
+  border-radius: var(--radius-compact);
+  color: var(--ready-text);
+  background: var(--ready-bg);
+}
+.landing-recipe-result strong,
+.landing-recipe-result small {
+  display: block;
+}
+.landing-demo-trial {
+  margin-top: 8px;
+}
+.landing-plan-price strong {
+  font-size: var(--text-heading);
+  color: var(--graphite);
+}
+.landing-plan-features {
+  margin: 0 0 14px;
+  font-size: var(--text-control);
+}
+.landing-text-link {
+  color: var(--blue);
+  text-decoration: underline;
+}
+.landing-close {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  align-items: center;
+  gap: 20px;
+  padding: clamp(22px, 5vw, 56px);
+  margin-bottom: 34px;
+  background: var(--landing-paper);
+  border-radius: var(--radius);
+}
+.landing-close .hero-actions {
+  margin: 0;
+}
+.landing-footer {
+  flex-wrap: wrap;
+}
+.landing-footer > a:not(.brand) {
+  color: var(--muted-strong);
+  overflow-wrap: anywhere;
+}
+@media (max-width: 880px) {
+  .landing-hero.landing-sales-hero,
+  .landing-demo-band {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .landing-product {
+    width: min(100%, 640px);
+  }
+}
+@media (max-width: 640px) {
+  .landing-sales-hero .landing-intro h1 {
+    max-width: 15ch;
+  }
+  .landing-product-pos {
+    border-width: 4px;
+  }
+  .landing-product-phone {
+    border-width: 3px;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .landing-product-pos,
+  .landing-product-phone {
+    animation: none;
+  }
+}

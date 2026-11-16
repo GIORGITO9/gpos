@@ -12,6 +12,10 @@ import { z } from "zod";
 import { db, transaction } from "./db";
 import { allowed, roles } from "./domain";
 import { recoveryMailer, recoveryMinutes } from "./recovery-mail";
+export function trialDays() {
+  const days = Number(process.env.TRIAL_DAYS || 14);
+  return Number.isSafeInteger(days) && days > 0 && days <= 365 ? days : 14;
+}
 export const hash = (s: string) => createHash("sha256").update(s).digest("hex");
 export async function audit(
   tx: any,
@@ -298,9 +302,7 @@ export async function authAction(
           subscription: {
             create: {
               planId: plan.id,
-              renewsAt: new Date(
-                Date.now() + Number(process.env.TRIAL_DAYS || 14) * 86400000,
-              ),
+              renewsAt: new Date(Date.now() + trialDays() * 86400000),
             },
           },
           branches: {

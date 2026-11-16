@@ -1,4 +1,6 @@
 import { useState, type ComponentType } from "react";
+import { useQuery } from "@tanstack/react-query";
+import { api, money } from "./api";
 import { Link } from "react-router-dom";
 import {
   ArrowDown,
@@ -11,7 +13,8 @@ import {
   Package,
   ReceiptText,
   RotateCcw,
-  ShoppingBag,
+  Mail,
+  Monitor,
   Store,
   Wallet,
 } from "lucide-react";
@@ -95,7 +98,7 @@ const modules = [
     id: "inventario",
     label: "Inventario",
     icon: Package,
-    title: "Sabe cuánto puedes vender antes de quedarte sin ingredientes.",
+    title: "Descubre cuánto puedes vender antes de quedarte sin ingredientes.",
     copy: "Define las cantidades de cada receta y GPOS descuenta los ingredientes al cobrar.",
     features: [
       [
@@ -168,26 +171,41 @@ const modules = [
   },
 ] as const;
 
-const plans = [
-  [
-    "Starter",
-    "Para empezar con un local.",
-    "1 sucursal · 5 usuarios",
-    "POS, mesas, cocina y reportes",
-  ],
-  [
-    "Professional",
-    "Para gestionar insumos y compras.",
-    "3 sucursales · 20 usuarios",
-    "También incluye inventario, compras y recetas",
-  ],
-  [
-    "Business",
-    "Para administrar varias sucursales.",
-    "Límites configurables",
-    "Operación multisucursal y funciones del plan Professional",
-  ],
-] as const;
+const salesEmail = "webcodecol@webcodecol.com";
+const salesLink = (subject: string) =>
+  `mailto:${salesEmail}?subject=${encodeURIComponent(subject)}`;
+const featureLabels: Record<string, string> = {
+  pos: "Punto de venta",
+  tables: "Mesas",
+  kitchen: "Cocina",
+  reports: "Reportes",
+  inventory: "Inventario",
+  purchases: "Compras",
+  delivery: "Domicilios",
+  recipes: "Recetas",
+  api: "API",
+};
+const limitLabels = {
+  branches: ["sucursal", "sucursales"],
+  users: ["usuario", "usuarios"],
+  registers: ["caja", "cajas"],
+  products: ["producto", "productos"],
+} as const;
+type PublicPlan = {
+  id: string;
+  name: string;
+  price: number;
+  features: string[];
+  limits: Record<string, number>;
+};
+const moduleImages = {
+  salon: "mesas",
+  cocina: "cocina",
+  inventario: "inventario",
+  caja: "caja",
+  gestion: "reportes",
+} as const;
+const showcase = "/showcase/";
 
 const questions = [
   [
@@ -204,14 +222,18 @@ const questions = [
   ],
 ] as const;
 
-function OrderDemo() {
+function OrderDemo({ trial }: { trial: string }) {
   const [step, setStep] = useState(0);
   const completed = step === journey.length;
   const current = journey[Math.min(step, journey.length - 1)];
   const StageIcon = current.icon;
 
   return (
-    <section className="landing-demo" aria-label="Demo interactiva de GPOS">
+    <section
+      id="demo"
+      className="landing-demo"
+      aria-label="Demo interactiva de GPOS"
+    >
       <header className="landing-demo-header">
         <h2>
           <Store size={19} aria-hidden="true" /> Del pedido al cobro
@@ -291,14 +313,27 @@ function OrderDemo() {
             ? "La mesa queda libre y la venta se registra en caja."
             : current.detail}
         </p>
+        {completed && (
+          <div className="landing-recipe-result">
+            <Package size={18} aria-hidden="true" />
+            <div>
+              <strong>Receta descontada</strong>
+              <small>−1 pan · −150 g de carne en este ejemplo</small>
+            </div>
+          </div>
+        )}
         <button
           type="button"
-          className="button primary landing-demo-action"
+          className={
+            completed
+              ? "button landing-demo-action"
+              : "button primary landing-demo-action"
+          }
           onClick={() => setStep(completed ? 0 : step + 1)}
         >
           {completed ? (
             <>
-              Reiniciar demo <RotateCcw size={17} aria-hidden="true" />
+              Repetir demo <RotateCcw size={17} aria-hidden="true" />
             </>
           ) : (
             <>
@@ -306,6 +341,15 @@ function OrderDemo() {
             </>
           )}
         </button>
+        {completed && (
+          <Link
+            className="button primary landing-demo-action landing-demo-trial"
+            to="/register"
+          >
+            {trial}
+            <ArrowRight size={17} aria-hidden="true" />
+          </Link>
+        )}
       </div>
     </section>
   );
@@ -322,7 +366,7 @@ function FeatureExplorer() {
       aria-labelledby="features-title"
     >
       <div className="landing-section-heading">
-        <h2 id="features-title">Todo lo que puedes hacer con GPOS.</h2>
+        <h2 id="features-title">Mira cómo trabaja GPOS.</h2>
         <p>
           Explora las funciones que conectan tu salón, tu cocina y la
           administración del negocio.
@@ -361,6 +405,19 @@ function FeatureExplorer() {
           <div key={active} className="landing-module-content">
             <h3 id="landing-module-title">{current.title}</h3>
             <p>{current.copy}</p>
+            <img
+              className="landing-module-image"
+              src={showcase + moduleImages[current.id] + ".webp"}
+              alt={
+                "Pantalla de " +
+                current.label +
+                " de GPOS con datos de demostración"
+              }
+              width="1440"
+              height="960"
+              loading="lazy"
+              decoding="async"
+            />
             <dl>
               {current.features.map(([title, copy]) => (
                 <div key={title}>
@@ -377,11 +434,19 @@ function FeatureExplorer() {
 }
 
 export function Landing({ Brand }: { Brand: ComponentType }) {
+  const offer = useQuery<{ data: PublicPlan[]; trialDays?: number }>({
+    queryKey: ["public-plans"],
+    queryFn: () => api("plans"),
+    staleTime: 60_000,
+  });
+  const days = offer.data?.trialDays;
+  const trial = days ? `Probar ${days} días gratis` : "Empezar prueba gratis";
   return (
     <div className="landing">
       <nav className="landing-shell landing-nav" aria-label="Principal">
         <Brand />
         <div className="landing-nav-links">
+          <a href="#demo">Demo</a>
           <a href="#features">Funciones</a>
           <a href="#plans">Planes</a>
         </div>
@@ -392,33 +457,79 @@ export function Landing({ Brand }: { Brand: ComponentType }) {
       <main id="landing-main">
         <div className="landing-hero-band">
           <section
-            className="landing-shell landing-hero"
+            className="landing-shell landing-hero landing-sales-hero"
             aria-labelledby="landing-title"
           >
             <div className="landing-intro">
               <h1 id="landing-title">
-                Tu restaurante, <span>todo en su lugar.</span>
+                Toma pedidos, envíalos a cocina <span>y cobra en GPOS.</span>
               </h1>
               <p>
-                Del primer pedido al cierre de caja. Maneja mesas, cocina,
-                inventario y ventas desde un solo lugar.
+                El punto de venta para restaurantes, cafeterías y negocios de
+                comidas. Controla mesas, recetas y caja en el mismo sistema.
               </p>
               <div className="hero-actions">
                 <Link className="button primary large" to="/register">
-                  Empezar mi prueba <ArrowRight size={18} aria-hidden="true" />
+                  {trial}
+                  <ArrowRight size={18} aria-hidden="true" />
                 </Link>
-                <a className="button large" href="#features">
-                  Explorar funciones <ArrowDown size={17} aria-hidden="true" />
+                <a className="button large" href="#demo">
+                  Probar la demo <ArrowDown size={17} aria-hidden="true" />
                 </a>
               </div>
               <p className="landing-audience">
-                <ShoppingBag size={17} aria-hidden="true" /> Para restaurantes,
-                cafeterías y negocios de comidas.
+                <Monitor size={17} aria-hidden="true" /> Desde el navegador ·
+                Sin tarjeta para empezar
               </p>
             </div>
-            <OrderDemo />
+            <figure className="landing-product">
+              <img
+                className="landing-product-pos"
+                src={showcase + "pos.webp"}
+                alt="GPOS en una pantalla de escritorio con catálogo de platos y ticket de venta"
+                width="1440"
+                height="960"
+                fetchPriority="high"
+              />
+              <img
+                className="landing-product-phone"
+                src={showcase + "movil.webp"}
+                alt="Punto de venta de GPOS en celular"
+                width="390"
+                height="770"
+                decoding="async"
+              />
+              <figcaption>GPOS con datos de demostración</figcaption>
+            </figure>
           </section>
         </div>
+        <section
+          className="landing-shell landing-demo-band"
+          aria-labelledby="demo-title"
+        >
+          <div className="landing-demo-intro">
+            <h2 id="demo-title">Haz una venta de principio a fin.</h2>
+            <p>
+              Envía el pedido a cocina, cobra la mesa y mira qué queda
+              registrado en caja e inventario.
+            </p>
+            <ol>
+              <li>
+                <ReceiptText size={19} aria-hidden="true" /> Toma el pedido en
+                la mesa
+              </li>
+              <li>
+                <ChefHat size={19} aria-hidden="true" /> Sigue la comanda en
+                cocina
+              </li>
+              <li>
+                <Wallet size={19} aria-hidden="true" /> Registra el cobro y el
+                consumo de la receta
+              </li>
+            </ol>
+          </div>
+          <OrderDemo trial={trial} />
+        </section>
         <FeatureExplorer />
         <section
           id="plans"
@@ -427,29 +538,76 @@ export function Landing({ Brand }: { Brand: ComponentType }) {
         >
           <div className="landing-shell">
             <div className="landing-section-heading">
-              <h2 id="plans-title">Un plan para cada etapa.</h2>
+              <h2 id="plans-title">Planes para tu negocio.</h2>
               <p>
-                Elige según el tamaño de tu equipo y las funciones que necesita
-                tu negocio.
+                Compara qué incluye cada plan. Para contratar, escríbenos y
+                confirma el precio y las condiciones de activación.
               </p>
             </div>
-            <div className="landing-plan-list">
-              {plans.map(([name, text, limit, included]) => (
-                <article key={name}>
-                  <h3>{name}</h3>
-                  <p>{text}</p>
-                  <strong>{limit}</strong>
-                  <span>{included}</span>
-                  <Link className="button" to="/register">
-                    Crear mi cuenta <ArrowRight size={16} aria-hidden="true" />
-                  </Link>
-                </article>
-              ))}
-            </div>
-            <small>
-              Las tarifas comerciales se configuran por el administrador de la
-              plataforma.
-            </small>
+            {offer.data?.data.length ? (
+              <div className="landing-plan-list">
+                {offer.data.data.map((plan) => (
+                  <article key={plan.id}>
+                    <h3>{plan.name}</h3>
+                    <p className="landing-plan-price">
+                      {plan.price > 0 ? (
+                        <>
+                          <strong>{money(plan.price)}</strong> COP / mes
+                        </>
+                      ) : (
+                        <strong>Precio a consultar</strong>
+                      )}
+                    </p>
+                    <p>
+                      {Object.entries(limitLabels)
+                        .flatMap(([key, names]) => {
+                          const limit = plan.limits[key];
+                          return limit === undefined
+                            ? []
+                            : [
+                                limit === 0
+                                  ? `Sin límite de ${names[1]}`
+                                  : `${limit.toLocaleString("es-CO")} ${names[limit === 1 ? 0 : 1]}`,
+                              ];
+                        })
+                        .join(" · ")}
+                    </p>
+                    <ul className="landing-plan-features">
+                      {plan.features.map((feature) => (
+                        <li key={feature}>
+                          <Check size={14} aria-hidden="true" />{" "}
+                          {featureLabels[feature] ?? feature}
+                        </li>
+                      ))}
+                    </ul>
+                    <a
+                      className="button"
+                      href={salesLink("Cotización GPOS — " + plan.name)}
+                    >
+                      Solicitar cotización{" "}
+                      <ArrowRight size={16} aria-hidden="true" />
+                    </a>
+                  </article>
+                ))}
+              </div>
+            ) : (
+              <p role={offer.isError ? "status" : undefined}>
+                {offer.isPending ? (
+                  "Cargando planes…"
+                ) : (
+                  <>
+                    Consulta los planes disponibles por{" "}
+                    <a
+                      className="landing-text-link"
+                      href={salesLink("Planes de GPOS")}
+                    >
+                      correo comercial
+                    </a>
+                    .
+                  </>
+                )}
+              </p>
+            )}
           </div>
         </section>
         <section
@@ -458,6 +616,17 @@ export function Landing({ Brand }: { Brand: ComponentType }) {
         >
           <h2 id="faq-title">Antes de empezar.</h2>
           <div>
+            <details>
+              <summary>
+                ¿Qué pasa al terminar mi prueba?
+                <ChevronDown size={18} aria-hidden="true" />
+              </summary>
+              <p>
+                {days ? `Tu prueba dura ${days} días. ` : ""}El acceso depende
+                de que tu suscripción esté vigente. Puedes escribirnos para
+                activar un plan. El registro no pide tarjeta.
+              </p>
+            </details>
             {questions.map(([question, answer]) => (
               <details key={question}>
                 <summary>
@@ -469,9 +638,33 @@ export function Landing({ Brand }: { Brand: ComponentType }) {
             ))}
           </div>
         </section>
+        <section
+          className="landing-shell landing-close"
+          aria-labelledby="landing-close-title"
+        >
+          <div>
+            <h2 id="landing-close-title">
+              Configura tu negocio y toma el primer pedido.
+            </h2>
+            <p>Crea tu cuenta, agrega tu menú y prueba una venta.</p>
+          </div>
+          <div className="hero-actions">
+            <Link className="button primary large" to="/register">
+              {trial}
+              <ArrowRight size={18} aria-hidden="true" />
+            </Link>
+            <a
+              className="button large"
+              href={salesLink("Asesoría comercial GPOS")}
+            >
+              <Mail size={17} aria-hidden="true" /> Hablar con ventas
+            </a>
+          </div>
+        </section>
       </main>
       <footer className="landing-shell landing-footer">
         <Brand />
+        <a href={salesLink("Información de GPOS")}>{salesEmail}</a>
         <Link to="/login">
           Iniciar sesión <ArrowRight size={16} aria-hidden="true" />
         </Link>
