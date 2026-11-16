@@ -74,9 +74,7 @@ const Purchases = lazy(() =>
 const SettingsPage = lazy(() =>
   loadPages().then((module) => ({ default: module.SettingsPage })),
 );
-const Admin = lazy(() =>
-  loadPages().then((module) => ({ default: module.Admin })),
-);
+const Admin = lazy(() => import("./admin"));
 const Onboarding = lazy(() =>
   loadPages().then((module) => ({ default: module.Onboarding })),
 );

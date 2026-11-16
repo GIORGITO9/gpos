@@ -36,6 +36,7 @@ model Plan {
  price Int @default(0)
  features Json
  limits Json
+ availableForSignup Boolean @default(true)
  subscriptions Subscription[]
 }
 model Subscription {

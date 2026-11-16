@@ -282,7 +282,10 @@ export async function authAction(
       })
       .parse(body);
     const passwordHash = await bcrypt.hash(b.password, 12);
-    const plan = await db.plan.findFirst({ orderBy: { price: "asc" } });
+    const plan = await db.plan.findFirst({
+      where: { availableForSignup: true },
+      orderBy: { price: "asc" },
+    });
     if (!plan)
       throw new BadRequestException(
         "Ejecuta la configuración inicial de planes",

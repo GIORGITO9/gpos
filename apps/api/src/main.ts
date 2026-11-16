@@ -37,9 +37,15 @@ import {
   platformIdentity,
   audit,
 } from "./auth";
-import { resources, list, save, remove, money } from "./catalog";
+import { resources, list, save, remove } from "./catalog";
 import * as op from "./operations";
 import { allowed } from "./domain";
+import {
+  adminActivity,
+  adminCompanies,
+  adminOverview,
+  planInput,
+} from "./admin";
 @Catch()
 class Errors implements ExceptionFilter {
   catch(e: any, host: ArgumentsHost) {
@@ -94,7 +100,12 @@ class Api {
     return ok({ status: "ok" });
   }
   @Get("plans") async plans() {
-    return ok(await db.plan.findMany({ orderBy: { price: "asc" } }));
+    return ok(
+      await db.plan.findMany({
+        where: { availableForSignup: true },
+        orderBy: { price: "asc" },
+      }),
+    );
   }
   @Post("auth/:action") async auth(
     @Param("action") action: string,
@@ -635,29 +646,21 @@ class Api {
   }
   @Get("admin/overview") async admin(@Req() req: Request) {
     await platformIdentity(req);
-    const tenants = await db.tenant.findMany({
-      include: {
-        subscription: { include: { plan: true } },
-        _count: { select: { users: true, branches: true } },
-      },
-      take: 100,
-      orderBy: { createdAt: "desc" },
-    });
-    const subscriptions = await db.subscription.findMany({
-      include: { plan: true },
-    });
-    const mrr = subscriptions
-      .filter((s) => s.status === "ACTIVA")
-      .reduce((v, s) => v + s.plan.price, 0);
-    return ok({
-      tenants,
-      plans: await db.plan.findMany(),
-      mrr,
-      arr: mrr * 12,
-      active: subscriptions.filter((s) => s.status === "ACTIVA").length,
-      trial: subscriptions.filter((s) => s.status === "TRIAL").length,
-      cancelled: subscriptions.filter((s) => s.status === "CANCELADA").length,
-    });
+    return ok(await adminOverview());
+  }
+  @Get("admin/companies") async platformCompanies(
+    @Req() req: Request,
+    @Query() query: unknown,
+  ) {
+    await platformIdentity(req);
+    return ok(await adminCompanies(query));
+  }
+  @Get("admin/activity") async platformActivity(
+    @Req() req: Request,
+    @Query() query: unknown,
+  ) {
+    await platformIdentity(req);
+    return ok(await adminActivity(query));
   }
   @Put("admin/tenants/:id") async tenantUpdate(
     @Param("id") id: string,
@@ -681,6 +684,22 @@ class Api {
       .parse(body);
     return ok(
       await transaction(async (tx) => {
+        const current = await tx.tenant.findUnique({
+          where: { id },
+          include: { subscription: true },
+        });
+        if (!current?.subscription)
+          throw new NotFoundException("Empresa sin suscripción");
+        const previous = current.subscription;
+        const action =
+          previous.planId !== b.planId ? "CHANGE_PLAN" : "UPDATE_SUBSCRIPTION";
+        if (
+          current.status === b.status &&
+          previous.status === b.subscriptionStatus &&
+          previous.planId === b.planId &&
+          previous.renewsAt.toISOString() === b.renewsAt
+        )
+          return current;
         const tenant = await tx.tenant.update({
           where: { id },
           data: {
@@ -690,12 +709,16 @@ class Api {
                 status: b.subscriptionStatus,
                 planId: b.planId,
                 renewsAt: b.renewsAt,
-                events: { create: { action: "CHANGE_PLAN" } },
+                cancelledAt:
+                  b.subscriptionStatus === "CANCELADA"
+                    ? (previous.cancelledAt ?? new Date())
+                    : null,
+                events: { create: { action } },
               },
             },
           },
         });
-        await audit(tx, u, "CHANGE_PLAN", "tenants", id, b);
+        await audit(tx, u, action, "tenants", id, b);
         return tenant;
       }),
     );
@@ -706,19 +729,28 @@ class Api {
     @Body() body: any,
   ) {
     const u = await platformIdentity(req);
-    const b = z
-      .object({
-        name: z.string().min(2),
-        price: money,
-        features: z.array(z.string()),
-        limits: z.record(z.string(), z.number().int().min(0)),
-      })
-      .parse(body);
+    const b = planInput.parse(body);
     return ok(
       await transaction(async (tx) => {
         const row = await tx.plan.update({ where: { id }, data: b });
         await audit(tx, u, "UPDATE", "plans", id);
         return row;
+      }),
+    );
+  }
+  @Post("admin/plans") async planCreate(
+    @Req() req: Request,
+    @Body() body: unknown,
+  ) {
+    const user = await platformIdentity(req);
+    const data = planInput.parse(body);
+    return ok(
+      await transaction(async (tx) => {
+        const plan = await tx.plan.create({
+          data: { ...data, availableForSignup: false },
+        });
+        await audit(tx, user, "CREATE", "plans", plan.id);
+        return plan;
       }),
     );
   }
