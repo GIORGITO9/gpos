@@ -27,6 +27,7 @@ import {
   transitions,
   cashExpected,
   allowed,
+  serviceAllowed,
 } from "./domain";
 const includeOrder = {
   items: true,
@@ -42,6 +43,9 @@ const includeOrder = {
   },
   refunds: true,
 };
+// Solo la mesa de una tienda evita cocina; sus domicilios sí pasan por Despachos.
+const skipsKitchen = (u: any, service: string) =>
+  u.tenant.businessType === "TIENDA" && service === "MESA";
 export async function findOrder(tx: any, id: string, u: any, branchId: string) {
   const o = await tx.order.findFirst({
     where: { id, tenantId: u.tenantId, branchId },
@@ -1039,6 +1043,7 @@ export async function addTableRound(
         sequence,
         requestKey: input.requestKey,
         requestHash,
+        ...(skipsKitchen(u, order.service) ? { status: "ENTREGADO" } : {}),
         items: {
           create: items.map((item, index) => ({
             ...item,
@@ -1050,7 +1055,14 @@ export async function addTableRound(
     });
     await tx.order.update({
       where: { id },
-      data: { ...amounts, status: "CONFIRMADO" },
+      data: {
+        ...amounts,
+        // Solo sigue entregado si no quedan rondas previas pendientes en cocina.
+        status:
+          skipsKitchen(u, order.service) && order.status === "ENTREGADO"
+            ? "ENTREGADO"
+            : "CONFIRMADO",
+      },
     });
     await audit(tx, u, "ADD_ROUND", "orders", id, {
       roundId: round.id,
@@ -1082,6 +1094,11 @@ export async function createOrder(
       items: orderLines.min(1).max(100),
     })
     .parse(body);
+  if (
+    !serviceAllowed(u.tenant, b.service) ||
+    (b.tableId && !serviceAllowed(u.tenant, "MESA"))
+  )
+    throw new BadRequestException("Servicio no disponible para tiendas");
   if (b.discount && !allowed(u.permissions, "ventas.editar"))
     throw new ForbiddenException("No tienes permiso para descuentos");
   const create = async (tx: Prisma.TransactionClient) => {
@@ -1122,7 +1139,10 @@ export async function createOrder(
         branchId,
         userId: u.id,
         service: b.service,
-        ...(checkoutTx ? { status: "ENTREGADO" } : {}),
+        // Tienda: la cuenta de mesa no pasa por cocina, queda lista para cobrar.
+        ...(checkoutTx || skipsKitchen(u, b.service)
+          ? { status: "ENTREGADO" }
+          : {}),
         source: b.source,
         tableId: b.tableId,
         customerId: b.customerId,
@@ -2016,7 +2036,9 @@ export async function productConfig(id: string, body: any, u: any) {
   return transaction(async (tx) => {
     if (!(await tx.product.findFirst({ where: { id, tenantId: u.tenantId } })))
       throw new NotFoundException();
-    await validateRecipe(tx, u.tenantId, b.recipe);
+    // Tienda: la receta es el espejo de stock que mantiene save(); aquí no se toca.
+    const keepRecipe = u.tenant.businessType === "TIENDA";
+    if (!keepRecipe) await validateRecipe(tx, u.tenantId, b.recipe);
     for (const m of b.modifierIds)
       if (
         !(await tx.modifier.findFirst({
@@ -2026,7 +2048,8 @@ export async function productConfig(id: string, body: any, u: any) {
         throw new BadRequestException("Modificador inválido");
     await tx.variant.deleteMany({ where: { productId: id } });
     await tx.productModifier.deleteMany({ where: { productId: id } });
-    await tx.recipeItem.deleteMany({ where: { productId: id } });
+    if (!keepRecipe)
+      await tx.recipeItem.deleteMany({ where: { productId: id } });
     await tx.priceList.deleteMany({ where: { productId: id } });
     const row = await tx.product.update({
       where: { id },
@@ -2035,7 +2058,7 @@ export async function productConfig(id: string, body: any, u: any) {
         modifiers: {
           create: b.modifierIds.map((modifierId) => ({ modifierId })),
         },
-        recipe: { create: b.recipe },
+        ...(keepRecipe ? {} : { recipe: { create: b.recipe } }),
         prices: { create: b.prices },
       },
     });

@@ -4177,3 +4177,9 @@ body:has(.admin-layout .modal) .toast[role="status"] {
 }
 .admin-complaint-history small { display: block; color: var(--muted); }
 .admin-complaint-list .button { justify-self: start; }
+@media (max-width: 767px) {
+  /* Despachos/Cocina en teléfono: una etapa vacía no debe ocupar media pantalla. */
+  .column-empty {
+    padding: 14px 5px;
+  }
+}

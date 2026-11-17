@@ -15,12 +15,16 @@ import {
   RotateCcw,
   Mail,
   Monitor,
+  ScanBarcode,
   Store,
+  Tag,
+  Truck,
+  UtensilsCrossed,
   Wallet,
 } from "lucide-react";
 import "./landing.css";
 
-const journey = [
+const restaurantJourney = [
   {
     name: "Pedido",
     icon: ReceiptText,
@@ -48,15 +52,75 @@ const journey = [
     next: "Pago registrado",
     detail: "Confirma el pago y consulta el movimiento de caja de la venta.",
   },
-] as const;
+];
+const storeJourney = [
+  {
+    name: "Venta",
+    icon: ScanBarcode,
+    title: "Venta en mostrador",
+    status: "Ticket abierto",
+    action: "Ir a cobrar",
+    next: "Listo para cobrar",
+    detail: "Escanea o busca los productos. Los servicios se agregan igual.",
+  },
+  {
+    name: "Cobro",
+    icon: Wallet,
+    title: "Cobrar ticket",
+    status: "Listo para cobrar",
+    action: "Confirmar cobro",
+    next: "Pago registrado",
+    detail: "Sin pasar por cocina: el ticket se cobra en el momento.",
+  },
+  {
+    name: "Inventario",
+    icon: Package,
+    title: "Existencias",
+    status: "Pago registrado",
+    action: "Ver existencias",
+    next: "Stock actualizado",
+    detail:
+      "Cada producto descuenta sus unidades; los servicios no tocan el inventario.",
+  },
+];
+const modes = {
+  restaurante: {
+    label: "Restaurante",
+    icon: UtensilsCrossed,
+    journey: restaurantJourney,
+    items: [
+      ["Hamburguesa de la casa", "$18.000"],
+      ["Limonada natural", "$7.000"],
+    ],
+    total: "$25.000",
+    closing: "La mesa queda libre y la venta se registra en caja.",
+    result: ["Receta descontada", "−1 pan · −150 g de carne en este ejemplo"],
+  },
+  tienda: {
+    label: "Tienda",
+    icon: Store,
+    journey: storeJourney,
+    items: [
+      ["Cuaderno argollado", "$10.000"],
+      ["Instalación de software", "$20.000"],
+    ],
+    total: "$30.000",
+    closing: "El ticket queda pagado y la venta se registra en caja.",
+    result: [
+      "Stock actualizado",
+      "−1 cuaderno · el servicio no descuenta stock",
+    ],
+  },
+} as const;
+type Mode = keyof typeof modes;
 
 const modules = [
   {
     id: "salon",
     label: "Ventas y mesas",
     icon: Armchair,
-    title: "Atiende cada pedido desde el mismo POS.",
-    copy: "Abre una cuenta en el salón, toma un domicilio o cobra una venta para llevar.",
+    title: "Atiende cada venta desde el mismo POS.",
+    copy: "Cobra en mostrador, abre una cuenta de mesa o toma un domicilio. Las tiendas activan las mesas solo si las usan.",
     features: [
       [
         "Salón",
@@ -64,7 +128,7 @@ const modules = [
       ],
       [
         "Venta directa",
-        "Cobra pedidos para llevar desde el ticket. Registra pedidos de domicilio o para recoger.",
+        "Cobra al instante desde el ticket: para llevar en restaurantes, venta en mostrador en tiendas.",
       ],
       [
         "Catálogo",
@@ -78,12 +142,16 @@ const modules = [
   },
   {
     id: "cocina",
-    label: "Cocina",
+    label: "Cocina y despachos",
     icon: ChefHat,
-    title: "Cada ronda llega a cocina con sus detalles.",
-    copy: "El equipo ve los platos, las cantidades y las notas antes de empezar.",
+    title: "Cada pedido llega a quien lo prepara.",
+    copy: "En restaurantes, la cocina ve platos, cantidades y notas. En tiendas, el mismo tablero alista y despacha los domicilios.",
     features: [
       ["Comandas", "Envía pedidos y rondas nuevas al tablero de cocina."],
+      [
+        "Despachos",
+        "Las tiendas alistan pedidos a domicilio y asignan el domiciliario al salir.",
+      ],
       [
         "Preparación",
         "Organiza productos por estación y sigue el avance de cada ronda.",
@@ -98,9 +166,13 @@ const modules = [
     id: "inventario",
     label: "Inventario",
     icon: Package,
-    title: "Descubre cuánto puedes vender antes de quedarte sin ingredientes.",
-    copy: "Define las cantidades de cada receta y GPOS descuenta los ingredientes al cobrar.",
+    title: "Sabe cuánto puedes vender antes de quedarte sin stock.",
+    copy: "Restaurantes descuentan ingredientes por receta. Tiendas descuentan unidades por producto, y los servicios no tocan el inventario.",
     features: [
+      [
+        "Stock por producto",
+        "En tiendas, cada producto lleva sus existencias y su alerta de pocas unidades.",
+      ],
       [
         "Recetas",
         "Consulta cuántas unidades puedes vender y qué ingrediente limita la disponibilidad.",
@@ -165,7 +237,7 @@ const modules = [
       ],
       [
         "Importación",
-        "Carga catálogos de productos, clientes e ingredientes desde CSV o Excel.",
+        "Carga productos, servicios, clientes e ingredientes desde CSV o Excel.",
       ],
     ],
   },
@@ -209,6 +281,10 @@ const showcase = "/showcase/";
 
 const questions = [
   [
+    "¿Sirve para una tienda que no vende comida?",
+    "Sí. GPOS tiene una versión para tiendas de productos o servicios: venta en mostrador, inventario por producto, servicios sin stock y domicilios. Las mesas se activan solo si tu negocio las usa.",
+  ],
+  [
     "¿Necesito instalar algo?",
     "GPOS funciona desde el navegador y requiere conexión a internet. La impresión directa en una térmica requiere configurar la impresora y el equipo de caja.",
   ],
@@ -222,7 +298,8 @@ const questions = [
   ],
 ] as const;
 
-function OrderDemo({ trial }: { trial: string }) {
+function OrderDemo({ trial, mode }: { trial: string; mode: Mode }) {
+  const { journey, items, total, closing, result } = modes[mode];
   const [step, setStep] = useState(0);
   const completed = step === journey.length;
   const current = journey[Math.min(step, journey.length - 1)];
@@ -236,7 +313,8 @@ function OrderDemo({ trial }: { trial: string }) {
     >
       <header className="landing-demo-header">
         <h2>
-          <Store size={19} aria-hidden="true" /> Del pedido al cobro
+          <Store size={19} aria-hidden="true" />{" "}
+          {mode === "tienda" ? "Del ticket al stock" : "Del pedido al cobro"}
         </h2>
         <span>Demo interactiva</span>
       </header>
@@ -290,35 +368,29 @@ function OrderDemo({ trial }: { trial: string }) {
             </span>
           </div>
           <dl className="landing-ticket-items">
-            <div>
-              <dt>
-                <span>1×</span> Hamburguesa de la casa
-              </dt>
-              <dd>$18.000</dd>
-            </div>
-            <div>
-              <dt>
-                <span>1×</span> Limonada natural
-              </dt>
-              <dd>$7.000</dd>
-            </div>
+            {items.map(([name, price]) => (
+              <div key={name}>
+                <dt>
+                  <span>1×</span> {name}
+                </dt>
+                <dd>{price}</dd>
+              </div>
+            ))}
           </dl>
           <div className="landing-ticket-total">
             <span>{completed ? "Registrado en caja" : "Total del pedido"}</span>
-            <strong>$25.000</strong>
+            <strong>{total}</strong>
           </div>
         </div>
         <p className="landing-ticket-explanation" role="status">
-          {completed
-            ? "La mesa queda libre y la venta se registra en caja."
-            : current.detail}
+          {completed ? closing : current.detail}
         </p>
         {completed && (
           <div className="landing-recipe-result">
             <Package size={18} aria-hidden="true" />
             <div>
-              <strong>Receta descontada</strong>
-              <small>−1 pan · −150 g de carne en este ejemplo</small>
+              <strong>{result[0]}</strong>
+              <small>{result[1]}</small>
             </div>
           </div>
         )}
@@ -368,7 +440,7 @@ function FeatureExplorer() {
       <div className="landing-section-heading">
         <h2 id="features-title">Mira cómo trabaja GPOS.</h2>
         <p>
-          Explora las funciones que conectan tu salón, tu cocina y la
+          Explora las funciones que conectan tus ventas, tu inventario y la
           administración del negocio.
         </p>
       </div>
@@ -439,21 +511,25 @@ export function Landing({ Brand }: { Brand: ComponentType }) {
     queryFn: () => api("plans"),
     staleTime: 60_000,
   });
+  const [mode, setMode] = useState<Mode>("restaurante");
   const days = offer.data?.trialDays;
   const trial = days ? `Probar ${days} días gratis` : "Empezar prueba gratis";
   return (
     <div className="landing">
-      <nav className="landing-shell landing-nav" aria-label="Principal">
-        <Brand />
-        <div className="landing-nav-links">
-          <a href="#demo">Demo</a>
-          <a href="#features">Funciones</a>
-          <a href="#plans">Planes</a>
-        </div>
-        <Link className="button landing-login" to="/login">
-          Iniciar sesión <ArrowRight size={16} aria-hidden="true" />
-        </Link>
-      </nav>
+      <header className="landing-header">
+        <nav className="landing-shell landing-nav" aria-label="Principal">
+          <Brand />
+          <div className="landing-nav-links">
+            <a href="#negocios">Negocios</a>
+            <a href="#demo">Demo</a>
+            <a href="#features">Funciones</a>
+            <a href="#plans">Planes</a>
+          </div>
+          <Link className="button landing-login" to="/login">
+            Iniciar sesión <ArrowRight size={16} aria-hidden="true" />
+          </Link>
+        </nav>
+      </header>
       <main id="landing-main">
         <div className="landing-hero-band">
           <section
@@ -462,11 +538,12 @@ export function Landing({ Brand }: { Brand: ComponentType }) {
           >
             <div className="landing-intro">
               <h1 id="landing-title">
-                Toma pedidos, envíalos a cocina <span>y cobra en GPOS.</span>
+                Vende, cobra y controla tu stock <span>en un solo POS.</span>
               </h1>
               <p>
-                El punto de venta para restaurantes, cafeterías y negocios de
-                comidas. Controla mesas, recetas y caja en el mismo sistema.
+                Para restaurantes, cafeterías y tiendas de productos o
+                servicios. GPOS se adapta a cómo vendes: mesas y cocina, o
+                mostrador e inventario por producto.
               </p>
               <div className="hero-actions">
                 <Link className="button primary large" to="/register">
@@ -504,31 +581,123 @@ export function Landing({ Brand }: { Brand: ComponentType }) {
           </section>
         </div>
         <section
+          id="negocios"
+          className="landing-shell landing-modes"
+          aria-labelledby="modes-title"
+        >
+          <div className="landing-section-heading">
+            <h2 id="modes-title">Un sistema. Dos formas de vender.</h2>
+            <p>
+              Activamos la versión que encaja con tu negocio. Cambia el menú, el
+              punto de venta y el inventario; tus datos y tu caja siguen igual.
+            </p>
+          </div>
+          <div className="landing-mode-cards">
+            {(
+              [
+                [
+                  "restaurante",
+                  "Para restaurantes y cafeterías",
+                  "Del pedido en la mesa a la comanda en cocina.",
+                  [
+                    "Mesas, rondas y cuentas divididas",
+                    "Tablero de cocina por estación",
+                    "Recetas que descuentan ingredientes",
+                    "Domicilios y pedidos para recoger",
+                  ],
+                ],
+                [
+                  "tienda",
+                  "Para tiendas de productos o servicios",
+                  "Del escáner al cobro, sin pasar por cocina.",
+                  [
+                    "Venta en mostrador con cobro inmediato",
+                    "Inventario por producto y alertas de stock",
+                    "Servicios que no descuentan inventario",
+                    "Domicilios con despachos y mesas opcionales",
+                  ],
+                ],
+              ] as const
+            ).map(([key, title, copy, points]) => {
+              const Icon = modes[key].icon;
+              return (
+                <article key={key} className="landing-mode-card">
+                  <span className="landing-mode-icon">
+                    <Icon size={22} aria-hidden="true" />
+                  </span>
+                  <h3>{title}</h3>
+                  <p>{copy}</p>
+                  <ul className="landing-plan-features">
+                    {points.map((point) => (
+                      <li key={point}>
+                        <Check size={14} aria-hidden="true" /> {point}
+                      </li>
+                    ))}
+                  </ul>
+                  <a
+                    className="landing-text-link landing-mode-link"
+                    href="#demo"
+                    onClick={() => setMode(key)}
+                  >
+                    Ver la demo de {modes[key].label.toLowerCase()}
+                    <ArrowRight size={16} aria-hidden="true" />
+                  </a>
+                </article>
+              );
+            })}
+          </div>
+        </section>
+        <section
           className="landing-shell landing-demo-band"
           aria-labelledby="demo-title"
         >
           <div className="landing-demo-intro">
             <h2 id="demo-title">Haz una venta de principio a fin.</h2>
+            <div
+              className="landing-segmented"
+              role="group"
+              aria-label="Tipo de negocio de la demo"
+            >
+              {(Object.keys(modes) as Mode[]).map((key) => {
+                const Icon = modes[key].icon;
+                return (
+                  <button
+                    key={key}
+                    type="button"
+                    aria-pressed={mode === key}
+                    onClick={() => setMode(key)}
+                  >
+                    <Icon size={17} aria-hidden="true" />
+                    {modes[key].label}
+                  </button>
+                );
+              })}
+            </div>
             <p>
-              Envía el pedido a cocina, cobra la mesa y mira qué queda
-              registrado en caja e inventario.
+              {mode === "tienda"
+                ? "Cobra en mostrador y mira cómo se actualizan la caja y las existencias."
+                : "Envía el pedido a cocina, cobra la mesa y mira qué queda registrado en caja e inventario."}
             </p>
             <ol>
-              <li>
-                <ReceiptText size={19} aria-hidden="true" /> Toma el pedido en
-                la mesa
-              </li>
-              <li>
-                <ChefHat size={19} aria-hidden="true" /> Sigue la comanda en
-                cocina
-              </li>
-              <li>
-                <Wallet size={19} aria-hidden="true" /> Registra el cobro y el
-                consumo de la receta
-              </li>
+              {(mode === "tienda"
+                ? [
+                    [Tag, "Escanea productos y agrega servicios"],
+                    [Wallet, "Cobra en el momento, sin cocina"],
+                    [Truck, "Despacha domicilios cuando los tengas"],
+                  ]
+                : [
+                    [ReceiptText, "Toma el pedido en la mesa"],
+                    [ChefHat, "Sigue la comanda en cocina"],
+                    [Wallet, "Registra el cobro y el consumo de la receta"],
+                  ]
+              ).map(([Icon, text]: any) => (
+                <li key={text}>
+                  <Icon size={19} aria-hidden="true" /> {text}
+                </li>
+              ))}
             </ol>
           </div>
-          <OrderDemo trial={trial} />
+          <OrderDemo key={mode} trial={trial} mode={mode} />
         </section>
         <FeatureExplorer />
         <section
@@ -644,9 +813,9 @@ export function Landing({ Brand }: { Brand: ComponentType }) {
         >
           <div>
             <h2 id="landing-close-title">
-              Configura tu negocio y toma el primer pedido.
+              Configura tu negocio y haz la primera venta.
             </h2>
-            <p>Crea tu cuenta, agrega tu menú y prueba una venta.</p>
+            <p>Crea tu cuenta, agrega tu menú o catálogo y prueba una venta.</p>
           </div>
           <div className="hero-actions">
             <Link className="button primary large" to="/register">

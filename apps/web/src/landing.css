@@ -694,6 +694,125 @@
   color: var(--muted-strong);
   overflow-wrap: anywhere;
 }
+.landing-modes {
+  padding-block: clamp(50px, 7vw, 100px);
+  scroll-margin-top: 16px;
+}
+.landing-mode-cards {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: clamp(14px, 2vw, 24px);
+}
+.landing-mode-card {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 10px;
+  padding: clamp(22px, 3.4vw, 40px);
+  background: var(--porcelain);
+  border-radius: calc(var(--radius) + 6px);
+}
+.landing-mode-icon {
+  display: grid;
+  place-items: center;
+  width: 48px;
+  height: 48px;
+  border-radius: var(--radius-feedback);
+  background: var(--surface);
+  color: var(--blue);
+}
+.landing-mode-card h3 {
+  margin: 6px 0 0;
+  font-size: clamp(var(--text-title-large), 2.2vw, var(--text-display-small));
+  line-height: 1.15;
+  letter-spacing: -0.03em;
+  text-wrap: balance;
+}
+.landing-mode-card > p {
+  margin: 0;
+  color: var(--muted-strong);
+  font-size: var(--text-body-large);
+}
+.landing-mode-card .landing-plan-features {
+  margin: 8px 0 6px;
+  font-size: var(--text-body);
+}
+.landing-mode-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 44px;
+  margin-top: auto;
+  font-weight: 600;
+  text-decoration: none;
+}
+.landing-mode-link:hover {
+  text-decoration: underline;
+}
+/* Control segmentado tipo iOS: pista porcelana, opción activa en blanco. */
+.landing-segmented {
+  display: inline-grid;
+  grid-auto-flow: column;
+  grid-auto-columns: minmax(0, 1fr);
+  gap: 2px;
+  margin-top: 18px;
+  padding: 3px;
+  background: var(--control-hover);
+  border-radius: 999px;
+}
+.landing-segmented button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  min-height: 44px;
+  padding: 0 18px;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--muted-strong);
+  font-size: var(--text-control);
+  font-weight: 600;
+  transition:
+    background-color var(--motion-feedback) var(--motion-ease),
+    color var(--motion-feedback) var(--motion-ease),
+    box-shadow var(--motion-feedback) var(--motion-ease);
+}
+.landing-segmented button:hover {
+  color: var(--graphite);
+}
+.landing-segmented button[aria-pressed="true"] {
+  background: var(--surface);
+  color: var(--graphite);
+  box-shadow:
+    0 1px 2px rgb(0 0 0 / 0.08),
+    0 3px 8px rgb(0 0 0 / 0.06);
+}
+.landing-segmented button:active {
+  transform: scale(0.97);
+}
+@media (prefers-contrast: more) {
+  .landing-segmented button[aria-pressed="true"] {
+    outline: 1px solid var(--contrast-border);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .landing-segmented button {
+    transition: none;
+  }
+  .landing-segmented button:active {
+    transform: none;
+  }
+}
+@media (max-width: 640px) {
+  .landing-mode-cards {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .landing-segmented {
+    display: grid;
+    width: 100%;
+  }
+}
 @media (max-width: 880px) {
   .landing-hero.landing-sales-hero,
   .landing-demo-band {
@@ -718,5 +837,333 @@
   .landing-product-pos,
   .landing-product-phone {
     animation: none;
+  }
+}
+/* Objetivos táctiles de 44px en la marca y los enlaces del pie (HIG). */
+.landing .brand,
+.landing-nav-links a,
+.landing-footer > a {
+  min-height: 44px;
+  display: inline-flex;
+  align-items: center;
+}
+.landing-mode-card .landing-plan-features svg {
+  align-self: flex-start;
+  margin-top: 0.3em;
+}
+
+/* ============================================================
+   Estilo Apple: barra translúcida, hero centrado, secciones
+   aireadas y tarjetas bento. Tokens de DESIGN.md.
+   ============================================================ */
+.landing {
+  --landing-section: clamp(64px, 10vw, 136px);
+  --landing-tile-radius: clamp(18px, 2.4vw, 28px);
+}
+.landing [id] {
+  scroll-margin-top: 72px;
+}
+
+/* Barra superior: material translúcido que flota sobre el contenido. */
+.landing-header {
+  position: sticky;
+  top: 0;
+  z-index: 40;
+  background: var(--toolbar-material);
+  backdrop-filter: saturate(180%) blur(20px);
+  -webkit-backdrop-filter: saturate(180%) blur(20px);
+  border-bottom: 1px solid color-mix(in srgb, var(--line) 70%, transparent);
+  padding-top: env(safe-area-inset-top);
+}
+.landing-nav {
+  min-height: 60px;
+}
+.landing-nav-links a {
+  font-size: var(--text-control);
+  color: var(--control-text);
+}
+.landing-nav .landing-login {
+  min-height: 38px;
+  padding: 6px 14px;
+  font-size: var(--text-control);
+}
+@media (prefers-reduced-transparency: reduce), (prefers-contrast: more) {
+  .landing-header {
+    background: var(--surface);
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+  }
+}
+
+/* Hero centrado: titular grande, producto debajo. */
+.landing-hero-band {
+  background: linear-gradient(var(--porcelain), var(--surface));
+  border: 0;
+}
+.landing-hero.landing-sales-hero {
+  grid-template-columns: minmax(0, 1fr);
+  justify-items: center;
+  text-align: center;
+  gap: clamp(36px, 6vw, 72px);
+  padding-block: clamp(48px, 9vw, 112px) clamp(40px, 6vw, 80px);
+}
+.landing-sales-hero .landing-intro {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+.landing-sales-hero .landing-intro h1 {
+  max-width: 16ch;
+  font-size: clamp(2.6rem, 7.2vw, 5.4rem);
+  line-height: 1.02;
+  letter-spacing: -0.045em;
+}
+.landing-sales-hero .landing-intro > p:not(.landing-audience) {
+  max-width: 46ch;
+  font-size: clamp(var(--text-body-large), 1.8vw, var(--text-title-large));
+}
+.landing .hero-actions {
+  justify-content: center;
+}
+.landing-sales-hero .landing-product {
+  width: min(100%, 1040px);
+  padding: 0 8% 0 0;
+}
+.landing-product-pos {
+  border-radius: var(--landing-tile-radius);
+}
+.landing-product figcaption {
+  text-align: center;
+}
+
+/* Secciones: más aire y títulos centrados. */
+.landing-modes,
+.landing-features,
+.landing-plans,
+.landing-faq,
+.landing-demo-band {
+  padding-block: var(--landing-section);
+}
+.landing-section-heading {
+  grid-template-columns: minmax(0, 1fr);
+  justify-items: center;
+  text-align: center;
+  gap: 14px;
+  margin-bottom: clamp(32px, 5vw, 56px);
+}
+.landing-section-heading h2,
+.landing-faq h2 {
+  max-width: 20ch;
+  font-size: clamp(2.1rem, 5vw, 3.6rem);
+  line-height: 1.05;
+  letter-spacing: -0.04em;
+}
+.landing-section-heading > p {
+  max-width: 52ch;
+  font-size: clamp(var(--text-body-large), 1.5vw, var(--text-title));
+}
+
+/* Tarjetas bento. */
+.landing-mode-card {
+  border-radius: var(--landing-tile-radius);
+  padding: clamp(26px, 4vw, 48px);
+  transition: transform var(--motion-feedback) var(--motion-ease);
+}
+.landing-mode-card:nth-child(2) {
+  background: var(--graphite);
+  color: var(--surface);
+}
+.landing-mode-card:nth-child(2) > p,
+.landing-mode-card:nth-child(2) li {
+  color: #d2d2d7;
+}
+.landing-mode-card:nth-child(2) .landing-mode-icon {
+  background: #2c2c2e;
+  color: #6cb4ff;
+}
+.landing-mode-card:nth-child(2) .landing-plan-features svg,
+.landing-mode-card:nth-child(2) .landing-mode-link {
+  color: #6cb4ff;
+}
+.landing-mode-card h3 {
+  font-size: clamp(var(--text-heading), 2.6vw, 2.25rem);
+}
+
+/* Demo y explorador. */
+.landing-demo-band {
+  border-bottom: 0;
+}
+.landing-demo {
+  border-radius: var(--landing-tile-radius);
+}
+.landing-features {
+  background: var(--porcelain);
+  width: 100%;
+  padding-inline: max(var(--landing-gutter), calc((100% - 1200px) / 2));
+}
+.landing-explorer {
+  background: var(--surface);
+  border: 0;
+  border-radius: var(--landing-tile-radius);
+}
+.landing-module-nav {
+  background: var(--surface);
+  border-inline-end: 1px solid var(--line);
+}
+.landing-module-nav button {
+  border: 0;
+}
+
+/* Planes como tarjetas separadas. */
+.landing-plans {
+  background: var(--surface);
+  border: 0;
+}
+.landing-plan-list {
+  gap: clamp(12px, 2vw, 20px);
+  background: transparent;
+  border: 0;
+}
+.landing-plan-list article {
+  background: var(--porcelain);
+  border-radius: var(--landing-tile-radius);
+}
+.landing-plan-list article + article {
+  border: 0;
+}
+
+/* Preguntas: columna única centrada, como una página de soporte. */
+.landing-faq {
+  grid-template-columns: minmax(0, 1fr);
+  max-width: 820px;
+}
+.landing-faq h2 {
+  justify-self: center;
+  text-align: center;
+  margin-bottom: 12px;
+}
+.landing-faq summary {
+  min-height: 60px;
+  font-size: var(--text-body-large);
+}
+
+/* Cierre en mosaico oscuro. */
+.landing-close {
+  flex-direction: column;
+  text-align: center;
+  gap: 26px;
+  padding: clamp(40px, 8vw, 96px) clamp(22px, 5vw, 64px);
+  margin-bottom: clamp(24px, 4vw, 48px);
+  background: var(--graphite);
+  color: var(--surface);
+  border-radius: var(--landing-tile-radius);
+}
+.landing-close h2 {
+  color: var(--surface);
+  font-size: clamp(2rem, 4.6vw, 3.4rem);
+  max-width: 18ch;
+  margin-inline: auto;
+}
+.landing-close p {
+  color: #d2d2d7;
+  margin-inline: auto;
+}
+.landing-close .button:not(.primary) {
+  background: transparent;
+  color: var(--surface);
+  border-color: #6e6e73;
+}
+.landing-close .button:not(.primary):hover {
+  background: #2c2c2e;
+}
+
+/* Pie discreto. */
+.landing-footer {
+  font-size: var(--text-label);
+  justify-content: center;
+  column-gap: 28px;
+}
+.landing-footer .brand {
+  font-size: var(--text-title-large);
+}
+
+/* Teléfonos. */
+@media (max-width: 640px) {
+  .landing-nav {
+    min-height: 54px;
+  }
+  .landing .hero-actions {
+    flex-direction: column;
+    align-items: stretch;
+    width: 100%;
+  }
+  .landing .hero-actions .button {
+    justify-content: center;
+    width: 100%;
+  }
+  .landing-sales-hero .landing-intro h1 {
+    max-width: 12ch;
+  }
+  .landing-sales-hero .landing-product {
+    padding-right: 12%;
+  }
+  .landing-audience {
+    justify-content: center;
+    text-align: center;
+  }
+  .landing-features {
+    padding-inline: 0;
+  }
+  .landing-features > * {
+    width: min(100% - var(--landing-gutter) * 2, 1200px);
+    margin-inline: auto;
+  }
+  .landing-explorer {
+    overflow: visible;
+    background: transparent;
+  }
+  /* Pestañas deslizables en vez de amontonadas. */
+  .landing-module-nav {
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    scroll-snap-type: x mandatory;
+    scrollbar-width: none;
+    gap: 8px;
+    padding: 0 0 14px;
+    background: transparent;
+    border: 0;
+  }
+  .landing-module-nav::-webkit-scrollbar {
+    display: none;
+  }
+  .landing-module-nav button {
+    flex: none;
+    scroll-snap-align: start;
+    white-space: nowrap;
+    padding-inline: 14px;
+    border-radius: 999px;
+    background: var(--surface);
+  }
+  .landing-module-panel {
+    background: var(--surface);
+    border-radius: var(--landing-tile-radius);
+    padding: 22px 18px;
+  }
+  .landing-faq summary {
+    font-size: var(--text-body);
+  }
+  .landing-footer {
+    flex-direction: column;
+    gap: 4px;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .landing-mode-card {
+    transition: none;
+  }
+}
+@media (pointer: coarse) {
+  .landing-nav .landing-login {
+    min-height: 44px;
   }
 }

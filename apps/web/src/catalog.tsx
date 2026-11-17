@@ -11,7 +11,16 @@ import {
   Settings2,
 } from "lucide-react";
 import Papa from "papaparse";
-import { api, get, useSession, money, can } from "./api";
+import {
+  api,
+  get,
+  useSession,
+  money,
+  can,
+  isStore,
+  serviceLabel,
+  posServices,
+} from "./api";
 import {
   PageTitle,
   TableScroll,
@@ -283,7 +292,11 @@ export function Catalog({ resource }: any) {
     <>
       <PageTitle
         title={d.title}
-        subtitle={d.description}
+        subtitle={
+          isStore(s.user) && resource === "products"
+            ? "Tus productos y servicios, con todos sus detalles."
+            : d.description
+        }
         action={
           can(s.user, d.permission + ".crear") && (
             <Button variant="primary" onClick={() => setEditing({})}>
@@ -296,11 +309,13 @@ export function Catalog({ resource }: any) {
       {resource === "products" && (
         <div className="section-links">
           <Link className="active" to="/app/products">
-            Menú
+            {isStore(s.user) ? "Catálogo" : "Menú"}
           </Link>
           <Link to="/app/categories">Categorías</Link>
           <Link to="/app/modifiers">Modificadores</Link>
-          <Link to="/app/ingredients">Ingredientes y recetas</Link>
+          {!isStore(s.user) && (
+            <Link to="/app/ingredients">Ingredientes y recetas</Link>
+          )}
         </div>
       )}
       <div className="panel">
@@ -382,9 +397,11 @@ export function Catalog({ resource }: any) {
                               {resource === "products" && r.trackStock && (
                                 <div className="muted">
                                   <small>
-                                    {r.recipe?.length
-                                      ? "Receta activa"
-                                      : "Receta pendiente"}
+                                    {isStore(s.user)
+                                      ? "Con inventario"
+                                      : r.recipe?.length
+                                        ? "Receta activa"
+                                        : "Receta pendiente"}
                                   </small>
                                 </div>
                               )}
@@ -421,7 +438,11 @@ export function Catalog({ resource }: any) {
                           <button
                             className="icon-button"
                             onClick={() => setConfig(r)}
-                            aria-label={"Receta y variantes de " + r.name}
+                            aria-label={
+                              (isStore(s.user)
+                                ? "Variantes de "
+                                : "Receta y variantes de ") + r.name
+                            }
                           >
                             <Settings2 size={17} />
                           </button>
@@ -498,6 +519,7 @@ function EntityForm({ resource, row, close }: any) {
     qc = useQueryClient();
   const [busy, setBusy] = useState(false),
     [error, setError] = useState("");
+  const store = isStore(s.user);
   const [trackStock, setTrackStock] = useState(Boolean(row.trackStock));
   const [recipe, setRecipe] = useState<RecipeLine[]>(row.recipe ?? []);
   const [branchIds, setBranchIds] = useState<string[]>(
@@ -522,7 +544,12 @@ function EntityForm({ resource, row, close }: any) {
         if (raw) body[key] = raw;
       } else body[key] = raw || null;
     }
-    if (resource === "products" && trackStock) {
+    if (resource === "products" && store) {
+      // La API crea las existencias del producto; la estación de cocina no aplica.
+      delete body.station;
+      if (trackStock)
+        body.lowStockThreshold = Number(fd.get("lowStockThreshold"));
+    } else if (resource === "products" && trackStock) {
       body.lowStockThreshold = Number(fd.get("lowStockThreshold"));
       if (!validRecipe(recipe, true)) {
         setError("Completa la receta con ingredientes y cantidades válidas.");
@@ -563,7 +590,37 @@ function EntityForm({ resource, row, close }: any) {
     >
       <form onSubmit={submit} className="entity-form">
         {d.fields.map(([key, label, type, options]) =>
-          key === "trackStock" ? (
+          store && key === "station" ? null : store && key === "trackStock" ? (
+            <fieldset key={key}>
+              <legend>Tipo e inventario</legend>
+              <label className="checkbox-row">
+                <input
+                  name={key}
+                  type="checkbox"
+                  checked={trackStock}
+                  onChange={(event) => setTrackStock(event.target.checked)}
+                />
+                Controlar inventario (producto físico)
+              </label>
+              <p>
+                {trackStock
+                  ? "Cada venta descuenta una unidad. Carga existencias en Compras o Inventario."
+                  : "Sin inventario: ideal para servicios o productos que no cuentas."}
+              </p>
+              {trackStock && (
+                <Field
+                  label="Avisar cuando queden hasta"
+                  name="lowStockThreshold"
+                  type="number"
+                  min={0}
+                  max={2147483647}
+                  step={1}
+                  defaultValue={row.lowStockThreshold ?? 3}
+                  required
+                />
+              )}
+            </fieldset>
+          ) : key === "trackStock" ? (
             <fieldset key={key}>
               <legend>Receta e inventario</legend>
               <label className="checkbox-row">
@@ -810,7 +867,9 @@ function RecipeEditor({
 
 function RecipeForm({ product, close }: any) {
   const qc = useQueryClient(),
-    toast = useToast();
+    toast = useToast(),
+    user = useSession((s) => s.user),
+    store = isStore(user);
   const [recipe, setRecipe] = useState<RecipeLine[]>(product.recipe || []),
     [variants, setVariants] = useState<any[]>(product.variants || []),
     [prices, setPrices] = useState<any[]>(product.prices || []),
@@ -824,13 +883,21 @@ function RecipeForm({ product, close }: any) {
   });
   return (
     <Modal
-      title={"Preparación de " + product.name}
-      subtitle="La receta se descuenta del stock al cobrar, si el producto controla inventario."
+      title={(store ? "Variantes de " : "Preparación de ") + product.name}
+      subtitle={
+        store
+          ? "Presentaciones, adicionales y precios por servicio."
+          : "La receta se descuenta del stock al cobrar, si el producto controla inventario."
+      }
       onClose={close}
       wide
     >
-      <h3>Receta</h3>
-      <RecipeEditor recipe={recipe} setRecipe={setRecipe} />
+      {!store && (
+        <>
+          <h3>Receta</h3>
+          <RecipeEditor recipe={recipe} setRecipe={setRecipe} />
+        </>
+      )}
       <h3>Variantes</h3>
       {variants.map((r, i) => (
         <div className="form-row" key={i}>
@@ -885,8 +952,11 @@ function RecipeForm({ product, close }: any) {
                 )
               }
             >
-              {["MESA", "DOMICILIO", "RECOGER", "PARA_LLEVAR"].map((t) => (
-                <option key={t}>{t}</option>
+              {/* Conserva un servicio guardado aunque ya no aplique, para no mostrar otro. */}
+              {[...new Set([...posServices(user), r.service])].map((t) => (
+                <option key={t} value={t}>
+                  {serviceLabel(user, t)}
+                </option>
               ))}
             </select>
           </Field>
@@ -938,7 +1008,9 @@ function RecipeForm({ product, close }: any) {
       <div className="modal-actions">
         <Button
           variant="primary"
-          disabled={busy || !validRecipe(recipe, product.trackStock)}
+          disabled={
+            busy || (!store && !validRecipe(recipe, product.trackStock))
+          }
           onClick={async () => {
             setBusy(true);
             try {

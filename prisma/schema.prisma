@@ -17,6 +17,8 @@ model Tenant {
  currency String @default("COP")
  taxRate Int @default(0)
  status String @default("ACTIVA")
+ businessType String @default("RESTAURANTE")
+ usesTables Boolean @default(false)
  createdAt DateTime @default(now())
  branches Branch[]
  users User[]

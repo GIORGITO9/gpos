@@ -1,0 +1,2 @@
+-- AlterTable
+ALTER TABLE `Tenant` ADD COLUMN `businessType` VARCHAR(191) NOT NULL DEFAULT 'RESTAURANTE';

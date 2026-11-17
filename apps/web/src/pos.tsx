@@ -37,7 +37,18 @@ import {
   LayoutGrid,
 } from "lucide-react";
 import { orderRounds, preparationAction } from "./order-rounds";
-import { api, get, useSession, money, date, labels, can } from "./api";
+import {
+  api,
+  get,
+  useSession,
+  money,
+  date,
+  labels,
+  can,
+  isStore,
+  serviceLabel,
+  posServices,
+} from "./api";
 import {
   Button,
   PageTitle,
@@ -82,7 +93,9 @@ export function ProductIcon({ name, size = 36 }: any) {
         ? IceCreamBowl
         : /burger|hamburguesa/i.test(name)
           ? Beef
-          : UtensilsCrossed;
+          : useSession.getState().user?.tenant?.businessType === "TIENDA"
+            ? Package
+            : UtensilsCrossed;
   return <Icon size={size} strokeWidth={1.3} />;
 }
 type ReceiptPreferences = {
@@ -311,6 +324,7 @@ function OrderComposer({
       localStorage.setItem(favoriteKey, JSON.stringify(next));
     } catch {}
   }
+  const store = isStore(s.user);
   const [service, setService] = useState(
     initialTable || orderId ? "MESA" : "PARA_LLEVAR",
   );
@@ -564,8 +578,12 @@ function OrderComposer({
       qc.invalidateQueries();
       toast(
         orderId
-          ? "Ronda agregada a la cuenta y enviada a cocina"
-          : `Pedido #${j.data.number} enviado a cocina`,
+          ? store
+            ? "Productos agregados a la cuenta"
+            : "Ronda agregada a la cuenta y enviada a cocina"
+          : store
+            ? `Pedido #${j.data.number} guardado`
+            : `Pedido #${j.data.number} enviado a cocina`,
       );
     } catch (e: any) {
       toast(e.message, true);
@@ -663,11 +681,13 @@ function OrderComposer({
               disabled={!!itemCount || pending}
               onChange={(event) => setService(event.target.value)}
             >
-              {Object.keys(serviceIcons).map((value) => (
-                <option key={value} value={value}>
-                  {labels[value]}
-                </option>
-              ))}
+              {Object.keys(serviceIcons)
+                .filter((value) => posServices(s.user).includes(value))
+                .map((value) => (
+                  <option key={value} value={value}>
+                    {serviceLabel(s.user, value)}
+                  </option>
+                ))}
             </select>
           </label>
         )}
@@ -734,7 +754,8 @@ function OrderComposer({
               aria-pressed={!category}
               onClick={() => setCategory("")}
             >
-              <LayoutGrid size={15} /> Todo el menú
+              <LayoutGrid size={15} />{" "}
+              {store ? "Todo el catálogo" : "Todo el menú"}
             </button>
             {categories.data?.map((c: any) => (
               <button
@@ -915,9 +936,15 @@ function OrderComposer({
             <div>
               <h2>
                 <ReceiptText size={19} aria-hidden="true" />{" "}
-                {orderId || service === "MESA" ? "Comanda" : "Ticket"}
+                {orderId || service === "MESA"
+                  ? store
+                    ? "Cuenta"
+                    : "Comanda"
+                  : "Ticket"}
               </h2>
-              <span>{orderId ? "Nueva ronda" : labels[service]}</span>
+              <span>
+                {orderId ? "Nueva ronda" : serviceLabel(s.user, service)}
+              </span>
             </div>
             <span className="pos-item-count">
               {itemCount} {itemCount === 1 ? "unidad" : "unidades"}
@@ -1039,7 +1066,7 @@ function OrderComposer({
               {!cart.length ? (
                 <Empty
                   title="Tu pedido empieza aquí"
-                  text="Toca un producto del menú para agregarlo."
+                  text={`Toca un producto del ${store ? "catálogo" : "menú"} para agregarlo.`}
                 />
               ) : (
                 cart.map((i) => (
@@ -1096,7 +1123,7 @@ function OrderComposer({
             {!orderId && (
               <details className="order-extras">
                 <summary>Notas y opciones del pedido</summary>
-                <Field label="Notas para cocina">
+                <Field label={store ? "Notas del pedido" : "Notas para cocina"}>
                   <textarea
                     value={notes}
                     onChange={(e) => setNotes(e.target.value)}
@@ -1174,25 +1201,34 @@ function OrderComposer({
                   </div>
                 </>
               )}
-              <Button
-                variant="primary"
-                className="pos-send"
-                disabled={
-                  !cart.length ||
-                  pending ||
-                  (!orderId && service === "MESA" && !tableId) ||
-                  (service === "DOMICILIO" && (!address || !customerId))
-                }
-                onClick={save}
-              >
-                <ChefHat size={18} />
-                {pending
-                  ? "Enviando…"
-                  : orderId
-                    ? "Enviar ronda a cocina"
-                    : "Enviar a cocina"}
-                <ArrowRight size={17} />
-              </Button>
+              {/* Tienda: la venta en mostrador solo se cobra; no va a despachos. */}
+              {!(store && !orderId && service === "PARA_LLEVAR") && (
+                <Button
+                  variant="primary"
+                  className="pos-send"
+                  disabled={
+                    !cart.length ||
+                    pending ||
+                    (!orderId && service === "MESA" && !tableId) ||
+                    (service === "DOMICILIO" && (!address || !customerId))
+                  }
+                  onClick={save}
+                >
+                  {store ? <ReceiptText size={18} /> : <ChefHat size={18} />}
+                  {pending
+                    ? "Enviando…"
+                    : store
+                      ? orderId
+                        ? "Agregar a la cuenta"
+                        : service === "MESA"
+                          ? "Abrir cuenta de mesa"
+                          : "Enviar a despachos"
+                      : orderId
+                        ? "Enviar ronda a cocina"
+                        : "Enviar a cocina"}
+                  <ArrowRight size={17} />
+                </Button>
+              )}
               {awaitingPayment && !orderId && (
                 <Button onClick={() => setSaved(currentOrder)}>
                   Ver pedido #{currentOrder.number}
@@ -1709,7 +1745,7 @@ export function OrderDetail({
   return (
     <Modal
       title={"Pedido #" + o.number}
-      subtitle={`${labels[o.service]} · ${o.table?.name || o.customer?.name || "Consumidor final"}`}
+      subtitle={`${serviceLabel(s.user, o.service)} · ${o.table?.name || o.customer?.name || "Consumidor final"}`}
       onClose={close}
       printReceipt={o.status === "CERRADO"}
     >
@@ -1859,7 +1895,7 @@ export function OrderDetail({
               <h2>{s.user.tenant.name}</h2>
               <p>Comprobante #{o.number}</p>
               <p>
-                {date(o.createdAt)} · {labels[o.service]}
+                {date(o.createdAt)} · {serviceLabel(s.user, o.service)}
               </p>
               {o.table && <p>{o.table.name}</p>}
             </header>
@@ -1910,7 +1946,9 @@ export function OrderDetail({
           <>
             {o.service === "DOMICILIO" && o.status === "LISTO" && (
               <Link className="button" to="/app/kitchen" onClick={close}>
-                Ir a cocina para despachar
+                {isStore(s.user)
+                  ? "Ir a despachos"
+                  : "Ir a cocina para despachar"}
               </Link>
             )}
             <div className="button-row">

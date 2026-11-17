@@ -241,7 +241,46 @@ export async function save(
       }))
     )
       throw new BadRequestException("Categoría inválida");
-    if (resource === "products" && data.recipe !== undefined) {
+    if (resource === "products" && u.tenant.businessType === "TIENDA") {
+      // Tienda: el stock es un ingrediente espejo 1:1 del producto, así compras e inventario se reutilizan.
+      delete data.recipe;
+      if (data.trackStock) {
+        const current = id
+          ? await tx.product.findUnique({
+              where: { id },
+              include: { recipe: { include: { ingredient: true } } },
+            })
+          : null;
+        const stockData = {
+          name: data.name,
+          cost: data.cost,
+          minimum: data.lowStockThreshold ?? 3,
+        };
+        const [line] = current?.recipe ?? [];
+        // Espejo propio: único ítem ×1, mismo nombre y ningún otro producto lo usa.
+        const ownMirror =
+          current?.recipe.length === 1 &&
+          line.quantity === 1 &&
+          line.ingredient.name === current.name &&
+          !(await tx.recipeItem.count({
+            where: { ingredientId: line.ingredientId, productId: { not: id } },
+          }));
+        if (ownMirror)
+          await tx.ingredient.update({
+            where: { id: line.ingredientId },
+            data: stockData,
+          });
+        // Sin receta: crea su espejo. Con receta de restaurante o compartida: no se toca.
+        else if (!current?.recipe.length) {
+          const ingredient = await tx.ingredient.create({
+            data: { ...stockData, tenantId: u.tenantId, unit: "unidad" },
+          });
+          data.recipe = {
+            create: [{ ingredientId: ingredient.id, quantity: 1 }],
+          };
+        }
+      }
+    } else if (resource === "products" && data.recipe !== undefined) {
       const recipe = data.recipe;
       if (data.trackStock && !recipe.length)
         throw new BadRequestException(

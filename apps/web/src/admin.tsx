@@ -51,6 +51,7 @@ const activityLabels: Record<string, string> = {
   UPDATE: "Plan actualizado",
   CHANGE_PLAN: "Plan de empresa cambiado",
   UPDATE_SUBSCRIPTION: "Suscripción actualizada",
+  UPDATE_BUSINESS_TYPE: "Tipo de negocio actualizado",
 };
 const featureNames: Record<string, string> = {
   pos: "Punto de venta",
@@ -80,6 +81,8 @@ type Company = {
   city: string;
   nit: string | null;
   status: string;
+  businessType: string;
+  usesTables: boolean;
   createdAt: string;
   _count: { users: number; branches: number };
   termsAcceptance: {
@@ -283,10 +286,14 @@ export default function Admin() {
         fields.renewsAt === adminDateInput.format(new Date(original))
           ? original
           : new Date(fields.renewsAt + "T23:59:59-05:00").toISOString();
-      await api("admin/tenants/" + editing.id, { ...fields, renewsAt }, "PUT");
+      await api(
+        "admin/tenants/" + editing.id,
+        { ...fields, renewsAt, usesTables: fields.usesTables === "on" },
+        "PUT",
+      );
       await qc.invalidateQueries({ queryKey: ["admin"] });
       setEditing(null);
-      toast("Suscripción actualizada");
+      toast("Empresa actualizada");
     } catch (e: any) {
       setFormError(e.message);
     } finally {
@@ -826,6 +833,20 @@ export default function Admin() {
                   <option value="SUSPENDIDA">{labels.SUSPENDIDA}</option>
                 </select>
               </Field>
+              <Field label="Tipo de negocio (cambia menús y punto de venta)">
+                <select name="businessType" defaultValue={editing.businessType}>
+                  <option value="RESTAURANTE">Restaurante</option>
+                  <option value="TIENDA">Tienda (productos o servicios)</option>
+                </select>
+              </Field>
+              <label className="checkbox-row">
+                <input
+                  type="checkbox"
+                  name="usesTables"
+                  defaultChecked={editing.usesTables}
+                />
+                La tienda usa mesas (solo aplica a tiendas)
+              </label>
               <Field label="Suscripción">
                 <select
                   name="subscriptionStatus"

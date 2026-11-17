@@ -1,4 +1,5 @@
 import { create } from "zustand";
+import { services, serviceAllowed } from "../../api/src/domain";
 export const useSession = create<any>((set) => ({
   token: null,
   user: null,
@@ -71,6 +72,30 @@ export const can = (u: any, p: string) =>
   u?.permissions?.some(
     (v: string) => v === "*" || v === p || v === p.split(".")[0] + ".*",
   );
+export const isStore = (u: any) => u?.tenant?.businessType === "TIENDA";
+// Misma regla que valida el servidor: una sola fuente en apps/api/src/domain.ts.
+const tenantRules = (u: any) => ({
+  businessType: u?.tenant?.businessType ?? "RESTAURANTE",
+  usesTables: !!u?.tenant?.usesTables,
+});
+export const posServices = (u: any): string[] =>
+  services.filter((service) => serviceAllowed(tenantRules(u), service));
+export const usesTables = (u: any) => serviceAllowed(tenantRules(u), "MESA");
+// Pantallas ocultas en tienda. Cocina se queda: allí se despachan domicilios.
+// Ingredientes: en tienda las existencias se crean solas desde cada producto.
+export const hiddenPaths = (u: any) =>
+  !isStore(u)
+    ? []
+    : [
+        ...(posServices(u).includes("RECOGER") ? [] : ["pickup"]),
+        "ingredients",
+        ...(usesTables(u) ? [] : ["tables", "tables-admin"]),
+      ];
+export const serviceLabel = (u: any, service: string) =>
+  isStore(u) && service === "PARA_LLEVAR"
+    ? "Venta en mostrador"
+    : labels[service];
+export const stockItem = (u: any) => (isStore(u) ? "Producto" : "Ingrediente");
 export const money = (v: number) =>
   new Intl.NumberFormat("es-CO", {
     style: "currency",
@@ -117,4 +142,17 @@ export const labels: Record<string, string> = {
   DAVIPLATA: "Daviplata",
   QR: "QR",
   OTRO: "Otro",
+  ENTRADA: "Entrada",
+  SALIDA: "Salida",
+  AJUSTE: "Ajuste",
+  MERMA: "Merma",
+  TRASLADO: "Traslado",
+  VENTA: "Venta",
+  DEVOLUCION: "Devolución",
+  INGRESO: "Ingreso",
+  RETIRO: "Retiro",
+  GASTO: "Gasto",
 };
+// "8 unidad" → "8 unidades"; otras unidades (g, ml, kg) no se pluralizan.
+export const unitLabel = (quantity: number, unit: string) =>
+  unit === "unidad" && quantity !== 1 ? "unidades" : unit;
