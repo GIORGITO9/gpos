@@ -27,6 +27,8 @@ import {
   Truck,
   ChefHat,
   Package,
+  PackageCheck,
+  Tag,
   ShoppingCart,
   Users,
   UtensilsCrossed,
@@ -45,7 +47,15 @@ import {
   Sun,
   CalendarDays,
 } from "lucide-react";
-import { api, get, useSession, restore, can } from "./api";
+import {
+  api,
+  get,
+  useSession,
+  restore,
+  can,
+  isStore,
+  hiddenPaths,
+} from "./api";
 import { Button, Field, Loading, Modal, useToast } from "./ui";
 import { Landing } from "./Landing";
 const loadPages = () => import("./pages");
@@ -101,6 +111,16 @@ const nav = [
   ["Reportes", "/app/reports", ChartNoAxesCombined, "reportes.ver"],
   ["Configuración", "/app/settings", Settings, "configuracion.ver"],
 ] as const;
+const section = (to?: string) => {
+  const i = nav.findIndex((n) => n[1] === to);
+  return i < 1
+    ? ""
+    : i < 6
+      ? "VENTAS"
+      : i < 11
+        ? "OPERACIÓN"
+        : "ADMINISTRACIÓN";
+};
 function Brand() {
   return (
     <Link to="/" className="brand">
@@ -508,6 +528,22 @@ function Shell() {
   const drawerRef = useRef<HTMLElement>(null);
   const contentRef = useRef<HTMLElement>(null);
   const isPOS = location.pathname === "/app/pos";
+  const store = isStore(s.user);
+  const visibleNav = nav
+    .filter(
+      (n) =>
+        can(s.user, n[3]) &&
+        !hiddenPaths(s.user).includes(n[1].replace("/app/", "")),
+    )
+    .map((n) =>
+      !store
+        ? n
+        : n[1] === "/app/products"
+          ? ([n[0], n[1], Tag, n[3]] as const)
+          : n[1] === "/app/kitchen"
+            ? (["Despachos", n[1], PackageCheck, n[3]] as const)
+            : n,
+    );
   useEffect(() => {
     const viewport = window.visualViewport;
     const content = contentRef.current;
@@ -669,31 +705,23 @@ function Shell() {
           </div>
         </div>
         <nav>
-          {nav
-            .filter((n) => can(s.user, n[3]))
-            .map(([title, to, Icon], i) => (
-              <div key={to}>
-                {[1, 6, 11].includes(i) && (
-                  <span className="nav-section">
-                    {i === 1
-                      ? "VENTAS"
-                      : i === 6
-                        ? "OPERACIÓN"
-                        : "ADMINISTRACIÓN"}
-                  </span>
-                )}
-                <NavLink
-                  to={to}
-                  end={to === "/app"}
-                  aria-label={title}
-                  title={title}
-                >
-                  <Icon size={19} strokeWidth={1.7} />
-                  <span>{title}</span>
-                  {title === "Punto de venta" && <kbd>F1</kbd>}
-                </NavLink>
-              </div>
-            ))}
+          {visibleNav.map(([title, to, Icon], i) => (
+            <div key={to}>
+              {section(to) !== section(visibleNav[i - 1]?.[1]) && (
+                <span className="nav-section">{section(to)}</span>
+              )}
+              <NavLink
+                to={to}
+                end={to === "/app"}
+                aria-label={title}
+                title={title}
+              >
+                <Icon size={19} strokeWidth={1.7} />
+                <span>{title}</span>
+                {title === "Punto de venta" && <kbd>F1</kbd>}
+              </NavLink>
+            </div>
+          ))}
         </nav>
         <div className="sidebar-foot">
           <div className="online-dot" />
@@ -774,6 +802,10 @@ function Shell() {
         >
           <Suspense fallback={<Loading />}>
             <Routes>
+              {/* Van primero: ante rutas empatadas React Router usa la primera declarada. */}
+              {hiddenPaths(s.user).map((r) => (
+                <Route key={r} path={r} element={<Navigate to="/app" />} />
+              ))}
               <Route
                 index
                 element={
@@ -826,15 +858,12 @@ function Shell() {
           </Suspense>
         </main>
         <nav className="bottom-nav">
-          {nav
-            .slice(0, 4)
-            .filter((item) => can(s.user, item[3]))
-            .map(([title, to, Icon]) => (
-              <NavLink to={to} end={to === "/app"} key={to}>
-                <Icon size={20} />
-                <span>{title === "Punto de venta" ? "Vender" : title}</span>
-              </NavLink>
-            ))}
+          {visibleNav.slice(0, 4).map(([title, to, Icon]) => (
+            <NavLink to={to} end={to === "/app"} key={to}>
+              <Icon size={20} />
+              <span>{title === "Punto de venta" ? "Vender" : title}</span>
+            </NavLink>
+          ))}
           <button
             aria-expanded={menu}
             aria-controls="app-navigation"

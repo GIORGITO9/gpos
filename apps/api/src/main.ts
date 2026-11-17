@@ -692,6 +692,8 @@ class Api {
         ]),
         planId: z.string(),
         renewsAt: z.string().datetime(),
+        businessType: z.enum(["RESTAURANTE", "TIENDA"]),
+        usesTables: z.boolean(),
       })
       .parse(body);
     return ok(
@@ -703,19 +705,45 @@ class Api {
         if (!current?.subscription)
           throw new NotFoundException("Empresa sin suscripción");
         const previous = current.subscription;
+        const subscriptionChanged =
+          current.status !== b.status ||
+          previous.status !== b.subscriptionStatus ||
+          previous.planId !== b.planId ||
+          previous.renewsAt.toISOString() !== b.renewsAt;
+        const businessChanged =
+          current.businessType !== b.businessType ||
+          current.usesTables !== b.usesTables;
+        if (!subscriptionChanged && !businessChanged) return current;
         const action =
-          previous.planId !== b.planId ? "CHANGE_PLAN" : "UPDATE_SUBSCRIPTION";
+          previous.planId !== b.planId
+            ? "CHANGE_PLAN"
+            : subscriptionChanged
+              ? "UPDATE_SUBSCRIPTION"
+              : "UPDATE_BUSINESS_TYPE";
+        // Quitar las mesas con cuentas abiertas las dejaría sin forma de cobrarse.
+        const hadTables =
+          current.businessType !== "TIENDA" || current.usesTables;
         if (
-          current.status === b.status &&
-          previous.status === b.subscriptionStatus &&
-          previous.planId === b.planId &&
-          previous.renewsAt.toISOString() === b.renewsAt
+          hadTables &&
+          b.businessType === "TIENDA" &&
+          !b.usesTables &&
+          (await tx.order.count({
+            where: {
+              tenantId: id,
+              service: "MESA",
+              status: { notIn: ["CERRADO", "CANCELADO"] },
+            },
+          }))
         )
-          return current;
+          throw new BadRequestException(
+            "La empresa tiene cuentas de mesa abiertas. Ciérralas antes de desactivar las mesas.",
+          );
         const tenant = await tx.tenant.update({
           where: { id },
           data: {
             status: b.status,
+            businessType: b.businessType,
+            usesTables: b.usesTables,
             subscription: {
               update: {
                 status: b.subscriptionStatus,
@@ -725,7 +753,9 @@ class Api {
                   b.subscriptionStatus === "CANCELADA"
                     ? (previous.cancelledAt ?? new Date())
                     : null,
-                events: { create: { action } },
+                ...(subscriptionChanged
+                  ? { events: { create: { action } } }
+                  : {}),
               },
             },
           },

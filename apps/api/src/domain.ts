@@ -1,9 +1,19 @@
+// La web (apps/web/src/api.ts) importa este archivo: mantenerlo sin dependencias de Node.
 export const services = [
   "MESA",
   "DOMICILIO",
   "RECOGER",
   "PARA_LLEVAR",
 ] as const;
+// Una tienda vende en mostrador (cobro inmediato) o a domicilio; mesas solo si el superadmin las activa.
+export const storeServices = ["PARA_LLEVAR", "DOMICILIO"] as const;
+export const serviceAllowed = (
+  tenant: { businessType: string; usesTables: boolean },
+  service: string,
+) =>
+  tenant.businessType !== "TIENDA" ||
+  (storeServices as readonly string[]).includes(service) ||
+  (service === "MESA" && tenant.usesTables);
 export const sources = [
   "POS",
   "WHATSAPP",

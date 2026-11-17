@@ -16,7 +16,7 @@
     "db:seed": "tsx prisma/seed.ts",
     "db:setup": "prisma migrate deploy && npm run db:seed",
     "start": "npm run start -w apps/api",
-    "test:integration": "RUN_INTEGRATION=true tsx --test apps/api/test/integration.test.ts",
+    "test:integration": "RUN_INTEGRATION=true tsx --test apps/api/test/integration.test.ts apps/api/test/store-mode.test.ts",
     "admin:create": "tsx scripts/create-admin.ts",
     "maintenance": "tsx scripts/maintenance.ts",
     "format": "prettier --write \"apps/**/*.{ts,tsx,css,json}\" \"scripts/*.ts\" \"prisma/*.ts\""

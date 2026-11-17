@@ -28,8 +28,22 @@ import {
   UtensilsCrossed,
   RefreshCw,
   CalendarDays,
+  PackageCheck,
 } from "lucide-react";
-import { api, get, useSession, money, date, labels, can } from "./api";
+import {
+  api,
+  get,
+  useSession,
+  money,
+  date,
+  labels,
+  can,
+  isStore,
+  hiddenPaths,
+  usesTables,
+  stockItem,
+  unitLabel,
+} from "./api";
 import {
   PageTitle,
   TableScroll,
@@ -75,7 +89,7 @@ export function Dashboard() {
           </Link>
         }
       />
-      <div className="metrics">
+      <div className={usesTables(s.user) ? "metrics" : "metrics three"}>
         <Metric
           label="Ventas de hoy"
           value={money(d.sales)}
@@ -88,17 +102,19 @@ export function Dashboard() {
           detail="Recibidos durante el día"
           icon={ReceiptText}
         />
-        <Metric
-          label="Mesas ocupadas"
-          value={
-            <>
-              {d.occupied}
-              <em> / {d.tables}</em>
-            </>
-          }
-          detail={`${d.tables - d.occupied} mesas sin ocupar`}
-          icon={Armchair}
-        />
+        {usesTables(s.user) && (
+          <Metric
+            label="Mesas ocupadas"
+            value={
+              <>
+                {d.occupied}
+                <em> / {d.tables}</em>
+              </>
+            }
+            detail={`${d.tables - d.occupied} mesas sin ocupar`}
+            icon={Armchair}
+          />
+        )}
         <Metric
           label="Domicilios"
           value={d.deliveries}
@@ -156,10 +172,16 @@ export function Dashboard() {
           </div>
           <Link to="/app/kitchen" className="operation-row">
             <span className="operation-icon orange">
-              <ChefHat size={21} />
+              {isStore(s.user) ? (
+                <PackageCheck size={21} />
+              ) : (
+                <ChefHat size={21} />
+              )}
             </span>
             <div>
-              <strong>Cocina en marcha</strong>
+              <strong>
+                {isStore(s.user) ? "Despachos en marcha" : "Cocina en marcha"}
+              </strong>
               <span>
                 {
                   d.orders.filter((o: any) => o.status === "EN_PREPARACION")
@@ -196,7 +218,7 @@ export function Dashboard() {
               <strong>Revisa tu inventario</strong>
               <span>
                 {d.lowStock.length
-                  ? `${d.lowStock.length} ingredientes con stock bajo`
+                  ? `${d.lowStock.length} ${stockItem(s.user).toLowerCase()}s con stock bajo`
                   : "Sin alertas de stock bajo"}
               </span>
             </div>
@@ -652,7 +674,7 @@ export function Kitchen() {
   return (
     <>
       <PageTitle
-        title="Cocina"
+        title={isStore(user) ? "Despachos" : "Cocina"}
         subtitle="Los pedidos se actualizan automáticamente cada 4 segundos."
         action={
           <span className="live-label">
@@ -661,23 +683,25 @@ export function Kitchen() {
           </span>
         }
       />
-      <div className="tabs">
-        <button
-          className={!station ? "active" : ""}
-          onClick={() => setStation("")}
-        >
-          Todas las estaciones
-        </button>
-        {stations.map((v: any) => (
+      {!isStore(user) && (
+        <div className="tabs">
           <button
-            key={v}
-            onClick={() => setStation(v)}
-            className={station === v ? "active" : ""}
+            className={!station ? "active" : ""}
+            onClick={() => setStation("")}
           >
-            {v}
+            Todas las estaciones
           </button>
-        ))}
-      </div>
+          {stations.map((v: any) => (
+            <button
+              key={v}
+              onClick={() => setStation(v)}
+              className={station === v ? "active" : ""}
+            >
+              {v}
+            </button>
+          ))}
+        </div>
+      )}
       {q.error ? (
         <ErrorBox error={q.error} />
       ) : (
@@ -919,7 +943,7 @@ export function Cash() {
                   <tbody>
                     {[...current.movements].reverse().map((m: any) => (
                       <tr key={m.id}>
-                        <td>{m.type}</td>
+                        <td>{labels[m.type] ?? m.type}</td>
                         <td>{m.reason}</td>
                         <td>{labels[m.method]}</td>
                         <td className={m.amount < 0 ? "negative" : "positive"}>
@@ -1063,6 +1087,8 @@ export function Inventory() {
   const q = useData("inventory"),
     movements = useData("inventory-movements", "inventory/movements"),
     s = useSession();
+  const store = isStore(s.user),
+    item = stockItem(s.user);
   const [modal, setModal] = useState(false),
     [busy, setBusy] = useState(false);
   const toast = useToast(),
@@ -1097,11 +1123,14 @@ export function Inventory() {
         }
       />
       <div className="section-links">
-        <Link to="/app/ingredients">
-          Ingredientes <ArrowUpRight size={15} />
-        </Link>
+        {!store && (
+          <Link to="/app/ingredients">
+            Ingredientes <ArrowUpRight size={15} />
+          </Link>
+        )}
         <Link to="/app/products">
-          Recetas de productos <ArrowUpRight size={15} />
+          {store ? "Productos" : "Recetas de productos"}{" "}
+          <ArrowUpRight size={15} />
         </Link>
         <Link to="/app/purchases">
           Compras <ArrowUpRight size={15} />
@@ -1114,7 +1143,7 @@ export function Inventory() {
       ) : (
         <div className="panel">
           <div className="panel-title">
-            <h2>Existencias por ingrediente</h2>
+            <h2>Existencias por {item.toLowerCase()}</h2>
             <span className="muted">Sucursal actual</span>
           </div>
           {q.data?.length ? (
@@ -1122,7 +1151,7 @@ export function Inventory() {
               <table>
                 <thead>
                   <tr>
-                    <th>Ingrediente</th>
+                    <th>{item}</th>
                     <th>Disponible</th>
                     <th>Mínimo</th>
                     <th>Costo unitario</th>
@@ -1138,10 +1167,10 @@ export function Inventory() {
                           <strong>{i.name}</strong>
                         </td>
                         <td>
-                          {qty.toLocaleString("es-CO")} {i.unit}
+                          {qty.toLocaleString("es-CO")} {unitLabel(qty, i.unit)}
                         </td>
                         <td>
-                          {i.minimum} {i.unit}
+                          {i.minimum} {unitLabel(i.minimum, i.unit)}
                         </td>
                         <td>{money(i.cost)}</td>
                         <td>
@@ -1162,8 +1191,16 @@ export function Inventory() {
             </TableScroll>
           ) : (
             <Empty
-              title="Agrega tus ingredientes"
-              text="Después podrás registrar existencias y crear recetas."
+              title={
+                store
+                  ? "Sin productos con inventario"
+                  : "Agrega tus ingredientes"
+              }
+              text={
+                store
+                  ? "Activa “Controlar inventario” en un producto para ver sus existencias aquí."
+                  : "Después podrás registrar existencias y crear recetas."
+              }
             />
           )}
         </div>
@@ -1176,7 +1213,7 @@ export function Inventory() {
           <table>
             <thead>
               <tr>
-                <th>Ingrediente</th>
+                <th>{item}</th>
                 <th>Tipo</th>
                 <th>Cantidad</th>
                 <th>Motivo</th>
@@ -1187,7 +1224,7 @@ export function Inventory() {
               {movements.data?.map((m: any) => (
                 <tr key={m.id}>
                   <td>{m.ingredient.name}</td>
-                  <td>{m.type}</td>
+                  <td>{labels[m.type] ?? m.type}</td>
                   <td className={m.quantity < 0 ? "negative" : "positive"}>
                     {m.quantity > 0 ? "+" : ""}
                     {m.quantity}
@@ -1209,7 +1246,7 @@ export function Inventory() {
       {modal && (
         <Modal title="Movimiento de inventario" onClose={() => setModal(false)}>
           <form onSubmit={submit}>
-            <Field label="Ingrediente">
+            <Field label={item}>
               <select name="ingredientId" required>
                 {q.data?.map((i: any) => (
                   <option key={i.id} value={i.id}>
@@ -1256,6 +1293,9 @@ export function Inventory() {
   );
 }
 export function Purchases() {
+  const user = useSession((s) => s.user),
+    store = isStore(user),
+    stockLabel = stockItem(user);
   const q = useData("purchases"),
     suppliers = useData("suppliers"),
     ingredients = useData("ingredients");
@@ -1312,9 +1352,11 @@ export function Purchases() {
         <Link to="/app/suppliers">
           Proveedores <ArrowUpRight size={15} />
         </Link>
-        <Link to="/app/ingredients">
-          Ingredientes <ArrowUpRight size={15} />
-        </Link>
+        {!store && (
+          <Link to="/app/ingredients">
+            Ingredientes <ArrowUpRight size={15} />
+          </Link>
+        )}
       </div>
       <div className="panel">
         {q.isLoading ? (
@@ -1374,7 +1416,7 @@ export function Purchases() {
         ) : (
           <Empty
             title="Tus compras, en orden"
-            text="Crea una orden y recibe los ingredientes para actualizar el inventario."
+            text={`Crea una orden y recibe los ${stockLabel.toLowerCase()}s para actualizar el inventario.`}
           />
         )}
       </div>
@@ -1444,7 +1486,7 @@ export function Purchases() {
             </Field>
             {items.map((item, i) => (
               <div className="form-row" key={i}>
-                <Field label="Ingrediente">
+                <Field label={stockLabel}>
                   <select
                     required
                     value={item.ingredientId}
@@ -1507,7 +1549,7 @@ export function Purchases() {
               }
             >
               <Plus size={15} />
-              Agregar ingrediente
+              Agregar {stockLabel.toLowerCase()}
             </Button>
             <div className="receipt-total">
               <span>Total</span>
@@ -1732,6 +1774,7 @@ export function Reports() {
   );
 }
 export function SettingsPage() {
+  const hidden = hiddenPaths(useSession((s) => s.user));
   const q = useData("settings"),
     audit = useData("audit");
   const qc = useQueryClient(),
@@ -1838,18 +1881,20 @@ export function SettingsPage() {
         </section>
       ) : tab === "team" ? (
         <div className="settings-list">
-          {options.map(([path, title, description, Icon]: any) => (
-            <Link key={path} to={"/app/" + path}>
-              <span className="operation-icon blue">
-                <Icon size={21} />
-              </span>
-              <div>
-                <h3>{title}</h3>
-                <p>{description}</p>
-              </div>
-              <ArrowRight size={18} />
-            </Link>
-          ))}
+          {options
+            .filter(([path]: any) => !hidden.includes(path))
+            .map(([path, title, description, Icon]: any) => (
+              <Link key={path} to={"/app/" + path}>
+                <span className="operation-icon blue">
+                  <Icon size={21} />
+                </span>
+                <div>
+                  <h3>{title}</h3>
+                  <p>{description}</p>
+                </div>
+                <ArrowRight size={18} />
+              </Link>
+            ))}
         </div>
       ) : tab === "subscription" ? (
         <section className="panel settings-panel">
@@ -1943,6 +1988,9 @@ export function SettingsPage() {
   );
 }
 export function Onboarding() {
+  const user = useSession((s) => s.user),
+    store = isStore(user),
+    hidden = hiddenPaths(user);
   const tasks = [
     [
       "settings",
@@ -1958,9 +2006,11 @@ export function Onboarding() {
     ],
     [
       "products",
-      "Crea tu menú",
-      "Precios, variantes y adicionales",
-      UtensilsCrossed,
+      store ? "Crea tu catálogo" : "Crea tu menú",
+      store
+        ? "Productos, servicios y precios"
+        : "Precios, variantes y adicionales",
+      store ? Layers : UtensilsCrossed,
     ],
     [
       "tables-admin",
@@ -1997,21 +2047,23 @@ export function Onboarding() {
             Todo listo para vender.
           </h2>
           <p>
-            No necesitas configurarlo todo de una vez. Comienza por tu menú y tu
-            caja.
+            No necesitas configurarlo todo de una vez. Comienza por tu{" "}
+            {store ? "catálogo" : "menú"} y tu caja.
           </p>
         </div>
         <div className="settings-list">
-          {tasks.map(([path, title, description, Icon]: any) => (
-            <Link key={path} to={"/app/" + path}>
-              <Icon size={22} />
-              <div>
-                <h3>{title}</h3>
-                <p>{description}</p>
-              </div>
-              <ArrowRight size={18} />
-            </Link>
-          ))}
+          {tasks
+            .filter(([path]: any) => !hidden.includes(path))
+            .map(([path, title, description, Icon]: any) => (
+              <Link key={path} to={"/app/" + path}>
+                <Icon size={22} />
+                <div>
+                  <h3>{title}</h3>
+                  <p>{description}</p>
+                </div>
+                <ArrowRight size={18} />
+              </Link>
+            ))}
         </div>
       </div>
     </>

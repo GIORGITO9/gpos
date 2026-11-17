@@ -1,6 +1,12 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { totals, allowed, cashExpected, transitions } from "../src/domain";
+import {
+  totals,
+  allowed,
+  cashExpected,
+  transitions,
+  serviceAllowed,
+} from "../src/domain";
 test("totales calculados con descuento, impuesto, propina y envío", () => {
   assert.deepEqual(totals(100000, 10000, 1900, 5000, 7000), {
     subtotal: 100000,
@@ -30,4 +36,16 @@ test("arqueo excluye pagos digitales y descuenta retiros", () => {
 test("pedidos cerrados no vuelven a cocina", () => {
   assert.deepEqual(transitions.CERRADO, []);
   assert.equal(transitions.CONFIRMADO.includes("CERRADO"), false);
+});
+test("una tienda solo vende en mostrador o a domicilio", () => {
+  const tienda = { businessType: "TIENDA", usesTables: false };
+  assert.equal(serviceAllowed(tienda, "PARA_LLEVAR"), true);
+  assert.equal(serviceAllowed(tienda, "DOMICILIO"), true);
+  assert.equal(serviceAllowed(tienda, "MESA"), false);
+  assert.equal(serviceAllowed(tienda, "RECOGER"), false);
+  assert.equal(serviceAllowed({ ...tienda, usesTables: true }, "MESA"), true);
+  assert.equal(
+    serviceAllowed({ businessType: "RESTAURANTE", usesTables: false }, "MESA"),
+    true,
+  );
 });
