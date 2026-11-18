@@ -37,6 +37,7 @@ import {
   LayoutGrid,
 } from "lucide-react";
 import { orderRounds, preparationAction } from "./order-rounds";
+import { enqueue, isNetworkError } from "./outbox";
 import {
   api,
   get,
@@ -542,6 +543,7 @@ function OrderComposer({
   async function save() {
     if (!cart.length || pending || checkingStock.current) return;
     setPending(true);
+    let newOrder: Record<string, unknown> | null = null;
     try {
       const items = ticketItems();
       let j;
@@ -556,7 +558,8 @@ function OrderComposer({
         pendingRound.current = null;
         qc.setQueryData(["order", s.branchId, orderId], j.data);
       } else {
-        j = await api("orders", {
+        newOrder = {
+          requestKey: newOperationKey(),
           service,
           source,
           ...(service === "MESA" ? { tableId } : {}),
@@ -569,7 +572,8 @@ function OrderComposer({
           tip,
           deliveryFee: service === "DOMICILIO" ? deliveryFee : 0,
           items,
-        });
+        };
+        j = await api("orders", newOrder);
       }
       qc.setQueryData(["order", s.branchId, j.data.id], j.data);
       setLastOrderId(j.data.id);
@@ -586,7 +590,20 @@ function OrderComposer({
             : `Pedido #${j.data.number} enviado a cocina`,
       );
     } catch (e: any) {
-      toast(e.message, true);
+      if (newOrder && isNetworkError(e)) {
+        const { requestKey, ...body } = newOrder;
+        enqueue({
+          requestKey: requestKey as string,
+          branchId: s.branchId,
+          body,
+          label: `${serviceLabel(s.user, service)} · ${itemCount} ${itemCount === 1 ? "unidad" : "unidades"}`,
+          createdAt: new Date().toISOString(),
+        });
+        setCart([]);
+        toast(
+          "Sin conexión. El pedido quedó guardado en este dispositivo y se enviará al volver la conexión.",
+        );
+      } else toast(e.message, true);
     } finally {
       setPending(false);
     }

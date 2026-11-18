@@ -4183,3 +4183,18 @@ body:has(.admin-layout .modal) .toast[role="status"] {
     padding: 14px 5px;
   }
 }
+/* Aviso de conexión: los pedidos tomados sin red esperan en el dispositivo. */
+.offline-banner {
+  margin: 0 0 16px;
+  padding: 10px 14px;
+  border-radius: var(--radius-feedback);
+  background: var(--pending-bg);
+  color: var(--pending-text);
+  font-size: var(--text-control);
+  font-weight: 600;
+  text-align: center;
+}
+.pos-fullscreen .offline-banner {
+  margin: 0;
+  border-radius: 0;
+}

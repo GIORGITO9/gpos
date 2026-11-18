@@ -1092,8 +1092,17 @@ export async function createOrder(
       tip: money.default(0),
       deliveryFee: money.default(0),
       items: orderLines.min(1).max(100),
+      // Clave del dispositivo: un reenvío tras perder la conexión no duplica el pedido.
+      requestKey: z.uuid().optional(),
     })
     .parse(body);
+  const existing = (tx: any) =>
+    b.requestKey
+      ? tx.order.findFirst({
+          where: { tenantId: u.tenantId, requestKey: b.requestKey },
+          select: { id: true },
+        })
+      : null;
   if (
     !serviceAllowed(u.tenant, b.service) ||
     (b.tableId && !serviceAllowed(u.tenant, "MESA"))
@@ -1102,6 +1111,8 @@ export async function createOrder(
   if (b.discount && !allowed(u.permissions, "ventas.editar"))
     throw new ForbiddenException("No tienes permiso para descuentos");
   const create = async (tx: Prisma.TransactionClient) => {
+    const previous = await existing(tx);
+    if (previous) return findOrder(tx, previous.id, u, branchId);
     if (
       b.customerId &&
       !(await tx.customer.findFirst({
@@ -1144,6 +1155,7 @@ export async function createOrder(
           ? { status: "ENTREGADO" }
           : {}),
         source: b.source,
+        requestKey: b.requestKey,
         tableId: b.tableId,
         customerId: b.customerId,
         notes: b.notes,
@@ -1160,7 +1172,15 @@ export async function createOrder(
     await audit(tx, u, "CREATE", "orders", o.id);
     return o;
   };
-  return checkoutTx ? create(checkoutTx) : transaction(create);
+  if (checkoutTx) return create(checkoutTx);
+  try {
+    return await transaction(create);
+  } catch (e: any) {
+    // Dos envíos simultáneos con la misma clave: el índice único deja pasar uno.
+    const previous = e?.code === "P2002" ? await existing(db) : null;
+    if (previous) return findOrder(db, previous.id, u, branchId);
+    throw e;
+  }
 }
 export async function orderState(
   id: string,
