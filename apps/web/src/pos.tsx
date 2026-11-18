@@ -1318,6 +1318,8 @@ function OrderComposer({
               setNotes("");
               setTip(0);
               setLastOrderId(paidOrder.id);
+              if (paidOrder.rounds?.length)
+                toast(`Pedido #${paidOrder.number} cobrado y enviado a cocina`);
             }
             qc.setQueryData(["order", s.branchId, paidOrder.id], paidOrder);
             qc.invalidateQueries();

@@ -40,7 +40,7 @@ import {
 } from "./auth";
 import { resources, list, save, remove } from "./catalog";
 import * as op from "./operations";
-import { allowed } from "./domain";
+import { allowed, serviceAllowed, services } from "./domain";
 import { terms } from "./legal-terms";
 import * as complaints from "./complaints";
 import {
@@ -720,23 +720,24 @@ class Api {
             : subscriptionChanged
               ? "UPDATE_SUBSCRIPTION"
               : "UPDATE_BUSINESS_TYPE";
-        // Quitar las mesas con cuentas abiertas las dejaría sin forma de cobrarse.
-        const hadTables =
-          current.businessType !== "TIENDA" || current.usesTables;
+        // Un pedido abierto de un servicio que el nuevo modo no ofrece (mesa, para recoger)
+        // quedaría sin pantalla para atenderlo ni cobrarlo.
+        const dropped = services.filter(
+          (service) => !serviceAllowed(b, service),
+        );
         if (
-          hadTables &&
-          b.businessType === "TIENDA" &&
-          !b.usesTables &&
+          businessChanged &&
+          dropped.length &&
           (await tx.order.count({
             where: {
               tenantId: id,
-              service: "MESA",
+              service: { in: dropped },
               status: { notIn: ["CERRADO", "CANCELADO"] },
             },
           }))
         )
           throw new BadRequestException(
-            "La empresa tiene cuentas de mesa abiertas. Ciérralas antes de desactivar las mesas.",
+            "La empresa tiene pedidos abiertos de mesa o para recoger que el nuevo modo no atiende. Ciérralos antes de cambiar.",
           );
         const tenant = await tx.tenant.update({
           where: { id },

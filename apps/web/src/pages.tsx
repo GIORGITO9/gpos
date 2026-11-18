@@ -741,7 +741,10 @@ export function Kitchen() {
                           <header>
                             <strong>
                               #{o.number}
-                              {round.id ? " · Ronda " + round.sequence : ""}
+                              {o.service === "MESA" && round.id
+                                ? " · Ronda " + round.sequence
+                                : ""}
+                              {o.status === "CERRADO" ? " · Pagado" : ""}
                             </strong>
                             <span>
                               <Clock size={13} />
@@ -1912,7 +1915,7 @@ export function SettingsPage() {
                   {
                     pos: "Punto de venta",
                     tables: "Mesas",
-                    kitchen: "Cocina",
+                    kitchen: isStore(s.user) ? "Despachos" : "Cocina",
                     reports: "Reportes",
                     inventory: "Inventario",
                     purchases: "Compras",

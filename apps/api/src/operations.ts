@@ -46,6 +46,26 @@ const includeOrder = {
 // Solo la mesa de una tienda evita cocina; sus domicilios sí pasan por Despachos.
 const skipsKitchen = (u: any, service: string) =>
   u.tenant.businessType === "TIENDA" && service === "MESA";
+// Se vende tal cual: su receta es solo su propio stock (1 unidad del ingrediente con su nombre).
+async function needsKitchen(tx: any, order: any) {
+  const products = await tx.product.findMany({
+    where: { id: { in: order.items.map((item: any) => item.productId) } },
+    select: {
+      name: true,
+      recipe: {
+        select: { quantity: true, ingredient: { select: { name: true } } },
+      },
+    },
+  });
+  return products.some(
+    (p: any) =>
+      !(
+        p.recipe.length === 1 &&
+        p.recipe[0].quantity === 1 &&
+        p.recipe[0].ingredient.name === p.name
+      ),
+  );
+}
 export async function findOrder(tx: any, id: string, u: any, branchId: string) {
   const o = await tx.order.findFirst({
     where: { id, tenantId: u.tenantId, branchId },
@@ -58,9 +78,26 @@ export async function orders(u: any, branchId: string, q: any) {
   const where: any = { tenantId: u.tenantId, branchId };
   if (q.active === "true") where.status = { notIn: ["CERRADO", "CANCELADO"] };
   if (q.kitchen === "true")
-    where.status = {
-      in: ["CONFIRMADO", "EN_PREPARACION", "LISTO", "EN_CAMINO"],
-    };
+    where.AND = [
+      {
+        OR: [
+          {
+            status: {
+              in: ["CONFIRMADO", "EN_PREPARACION", "LISTO", "EN_CAMINO"],
+            },
+          },
+          // Para llevar ya cobrado que cocina todavía prepara.
+          {
+            status: "CERRADO",
+            rounds: {
+              some: {
+                status: { in: ["CONFIRMADO", "EN_PREPARACION", "LISTO"] },
+              },
+            },
+          },
+        ],
+      },
+    ];
   if (["CERRADO", "CANCELADO"].includes(q.status)) where.status = q.status;
   if (q.status === "CANCELADO") where.mergedIntoId = null;
   if (q.status === "UNIDO") where.mergedIntoId = { not: null };
@@ -1198,12 +1235,15 @@ export async function orderState(
     .parse(body);
   return transaction(async (tx) => {
     const o = await findOrder(tx, id, u, branchId);
-    if (["CERRADO", "CANCELADO"].includes(o.status))
-      throw new ConflictException("La cuenta ya está cerrada");
     const round = b.roundId
       ? o.rounds.find((item: any) => item.id === b.roundId)
       : undefined;
     if (b.roundId && !round) throw new NotFoundException("Ronda no encontrada");
+    // Para llevar ya cobrado: cocina solo avanza su ticket; la cuenta sigue cerrada.
+    const prepaid =
+      o.status === "CERRADO" && !!round && b.status !== "CANCELADO";
+    if (o.status === "CANCELADO" || (o.status === "CERRADO" && !prepaid))
+      throw new ConflictException("La cuenta ya está cerrada");
     if (o.rounds.length && !round && b.status !== "CANCELADO")
       throw new ConflictException("Selecciona la ronda que quieres actualizar");
     if (round && b.status === "CANCELADO")
@@ -1282,7 +1322,7 @@ export async function orderState(
           states.includes(value),
         ) ?? "ENTREGADO";
     }
-    await tx.order.update({ where: { id }, data: { status } });
+    if (!prepaid) await tx.order.update({ where: { id }, data: { status } });
     if (b.status === "LISTO")
       await tx.notification.create({
         data: {
@@ -1699,6 +1739,18 @@ export async function checkoutTakeaway(
     await audit(tx, u, "CHECKOUT_TAKEAWAY", "orders", order.id, {
       requestHash,
     });
+    // Restaurante: el cobro queda cerrado, pero si lleva comida cocina recibe un ticket.
+    // Lo que se vende tal cual (una gaseosa con stock por unidad) no lo necesita.
+    if (u.tenant.businessType !== "TIENDA" && (await needsKitchen(tx, paid))) {
+      const round = await tx.orderRound.create({
+        data: { orderId: paid.id, sequence: 1, status: "CONFIRMADO" },
+      });
+      await tx.orderItem.updateMany({
+        where: { orderId: paid.id },
+        data: { roundId: round.id },
+      });
+      return findOrder(tx, paid.id, u, branchId);
+    }
     return paid;
   });
 }

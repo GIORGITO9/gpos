@@ -98,6 +98,27 @@ export const serviceLabel = (u: any, service: string) =>
   isStore(u) && service === "PARA_LLEVAR"
     ? "Venta en mostrador"
     : labels[service];
+const roleNames: Record<string, string> = {
+  OWNER: "Propietario",
+  ADMIN: "Administrador",
+  GERENTE: "Gerente",
+  SUPERVISOR: "Supervisor",
+  CAJERO: "Cajero",
+  MESERO: "Mesero",
+  COCINA: "Cocina",
+  DOMICILIARIO: "Domiciliario",
+  INVENTARIO: "Inventario",
+};
+// En tienda el rol de cocina atiende Despachos.
+export const roleLabel = (u: any, role: string) =>
+  isStore(u) && role === "COCINA" ? "Despachos" : roleNames[role] || role;
+// Sin mesas no hay meseros (se conserva el rol actual de quien ya lo tenga).
+export const roleOptions = (u: any, current?: string) =>
+  Object.keys(roleNames).filter(
+    (r) =>
+      r !== "OWNER" &&
+      (r !== "MESERO" || usesTables(u) || current === "MESERO"),
+  );
 export const stockItem = (u: any) => (isStore(u) ? "Producto" : "Ingrediente");
 export const money = (v: number) =>
   new Intl.NumberFormat("es-CO", {

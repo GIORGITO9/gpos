@@ -241,51 +241,55 @@ export async function save(
       }))
     )
       throw new BadRequestException("Categoría inválida");
-    if (resource === "products" && u.tenant.businessType === "TIENDA") {
-      // Tienda: el stock es un ingrediente espejo 1:1 del producto, así compras e inventario se reutilizan.
+    const store = u.tenant.businessType === "TIENDA";
+    if (resource === "products" && store) delete data.recipe;
+    // Producto que se vende tal cual (toda la tienda; en restaurante, una gaseosa sin receta):
+    // su stock es un ingrediente espejo 1:1, así compras e inventario se reutilizan.
+    const resale =
+      resource === "products" &&
+      data.trackStock &&
+      (store || (Array.isArray(data.recipe) && !data.recipe.length));
+    if (resale) {
       delete data.recipe;
-      if (data.trackStock) {
-        const current = id
-          ? await tx.product.findUnique({
-              where: { id },
-              include: { recipe: { include: { ingredient: true } } },
-            })
-          : null;
-        const stockData = {
-          name: data.name,
-          cost: data.cost,
-          minimum: data.lowStockThreshold ?? 3,
+      const current = id
+        ? await tx.product.findUnique({
+            where: { id },
+            include: { recipe: { include: { ingredient: true } } },
+          })
+        : null;
+      const stockData = {
+        name: data.name,
+        cost: data.cost,
+        minimum: data.lowStockThreshold ?? 3,
+      };
+      const [line] = current?.recipe ?? [];
+      // Espejo propio: único ítem ×1, mismo nombre y ningún otro producto lo usa.
+      const ownMirror =
+        current?.recipe.length === 1 &&
+        line.quantity === 1 &&
+        line.ingredient.name === current.name &&
+        !(await tx.recipeItem.count({
+          where: { ingredientId: line.ingredientId, productId: { not: id } },
+        }));
+      if (ownMirror)
+        await tx.ingredient.update({
+          where: { id: line.ingredientId },
+          data: stockData,
+        });
+      // Sin receta: crea su espejo. En tienda, una receta de restaurante o compartida no se toca;
+      // en restaurante, quitar todos los ingredientes la reemplaza por el espejo.
+      else if (!current?.recipe.length || !store) {
+        if (current?.recipe.length)
+          await tx.recipeItem.deleteMany({ where: { productId: id } });
+        const ingredient = await tx.ingredient.create({
+          data: { ...stockData, tenantId: u.tenantId, unit: "unidad" },
+        });
+        data.recipe = {
+          create: [{ ingredientId: ingredient.id, quantity: 1 }],
         };
-        const [line] = current?.recipe ?? [];
-        // Espejo propio: único ítem ×1, mismo nombre y ningún otro producto lo usa.
-        const ownMirror =
-          current?.recipe.length === 1 &&
-          line.quantity === 1 &&
-          line.ingredient.name === current.name &&
-          !(await tx.recipeItem.count({
-            where: { ingredientId: line.ingredientId, productId: { not: id } },
-          }));
-        if (ownMirror)
-          await tx.ingredient.update({
-            where: { id: line.ingredientId },
-            data: stockData,
-          });
-        // Sin receta: crea su espejo. Con receta de restaurante o compartida: no se toca.
-        else if (!current?.recipe.length) {
-          const ingredient = await tx.ingredient.create({
-            data: { ...stockData, tenantId: u.tenantId, unit: "unidad" },
-          });
-          data.recipe = {
-            create: [{ ingredientId: ingredient.id, quantity: 1 }],
-          };
-        }
       }
     } else if (resource === "products" && data.recipe !== undefined) {
       const recipe = data.recipe;
-      if (data.trackStock && !recipe.length)
-        throw new BadRequestException(
-          "Agrega al menos un ingrediente para descontar la receta",
-        );
       await validateRecipe(tx, u.tenantId, recipe);
       if (id) await tx.recipeItem.deleteMany({ where: { productId: id } });
       data.recipe = { create: recipe };

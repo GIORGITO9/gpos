@@ -20,6 +20,9 @@ import {
   isStore,
   serviceLabel,
   posServices,
+  labels,
+  roleLabel,
+  roleOptions,
 } from "./api";
 import {
   PageTitle,
@@ -61,7 +64,7 @@ const definitions: Record<
       ["price", "Precio de venta", "number"],
       ["cost", "Costo", "number"],
       ["station", "Estación de cocina"],
-      ["trackStock", "Descontar receta al vender", "checkbox"],
+      ["trackStock", "Controlar inventario", "checkbox"],
       ["active", "Disponible para venta", "checkbox"],
     ],
     columns: ["name", "category", "price", "cost", "active"],
@@ -421,6 +424,8 @@ export function Catalog({ resource }: any) {
                           </span>
                         ) : c === "status" ? (
                           <Badge value={r[c]} />
+                        ) : c === "role" ? (
+                          roleLabel(s.user, r[c])
                         ) : (
                           r[c] || "—"
                         )}
@@ -551,7 +556,8 @@ function EntityForm({ resource, row, close }: any) {
         body.lowStockThreshold = Number(fd.get("lowStockThreshold"));
     } else if (resource === "products" && trackStock) {
       body.lowStockThreshold = Number(fd.get("lowStockThreshold"));
-      if (!validRecipe(recipe, true)) {
+      // Sin ingredientes se vende tal cual (una gaseosa): la API crea su existencia por unidad.
+      if (!validRecipe(recipe, false)) {
         setError("Completa la receta con ingredientes y cantidades válidas.");
         return;
       }
@@ -635,8 +641,10 @@ function EntityForm({ resource, row, close }: any) {
               {trackStock && (
                 <>
                   <p>
-                    Indica cuánto se usa por unidad. El stock se descuenta al
-                    cobrar la venta.
+                    Si se prepara, indica cuánto ingrediente usa cada unidad. Si
+                    se vende tal cual, como una gaseosa, déjalo sin
+                    ingredientes: se contará por unidad. El stock se descuenta
+                    al cobrar.
                   </p>
                   <RecipeEditor recipe={recipe} setRecipe={setRecipe} />
                   <Field
@@ -670,8 +678,18 @@ function EntityForm({ resource, row, close }: any) {
                         </option>
                       ))}
                     </>
+                  ) : key === "role" ? (
+                    roleOptions(s.user, row.role).map((v) => (
+                      <option key={v} value={v}>
+                        {roleLabel(s.user, v)}
+                      </option>
+                    ))
                   ) : (
-                    options.map((v: string) => <option key={v}>{v}</option>)
+                    options.map((v: string) => (
+                      <option key={v} value={v}>
+                        {labels[v] ?? v}
+                      </option>
+                    ))
                   )}
                 </select>
               ) : type === "checkbox" ? (

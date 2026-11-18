@@ -11,6 +11,17 @@ export const escapeHtml = (v: string) =>
 const font =
   "-apple-system,BlinkMacSystemFont,'SF Pro Text','Segoe UI',Roboto,Helvetica,Arial,sans-serif";
 
+// Seis casillas en tabla (Gmail y Outlook ignoran grid/flex); el código completo va también en el asunto para copiarlo.
+const codeBoxes = (code: string) =>
+  `<table role="presentation" align="center" cellpadding="0" cellspacing="0" width="100%" style="margin:0 auto;max-width:312px;"><tr>${[
+    ...code,
+  ]
+    .map(
+      (d) =>
+        `<td width="16%" style="padding:0 3px;"><div style="height:56px;line-height:56px;border:1px solid #d2d2d7;border-radius:12px;background:#f5f5f7;text-align:center;font-family:${font};font-size:28px;font-weight:700;color:#1d1d1f;">${d}</div></td>`,
+    )
+    .join("")}</tr></table>`;
+
 // Plantilla con tablas y estilos en línea: es lo que respetan Gmail, Outlook y Apple Mail.
 export function emailLayout(o: {
   preheader: string;
@@ -69,7 +80,7 @@ export function deviceCodeMailer() {
         title: "Autoriza este dispositivo",
         intro:
           "Alguien inició sesión en tu cuenta de GPOS desde un dispositivo nuevo. Escribe este código para autorizarlo:",
-        body: `<div style="background:#f5f5f7;border-radius:14px;padding:22px 12px;text-align:center;font-size:36px;font-weight:700;letter-spacing:10px;color:#1d1d1f;font-variant-numeric:tabular-nums;">${code}</div>
+        body: `${codeBoxes(code)}
 <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin-top:20px;font-size:14px;line-height:1.5;">
 <tr><td style="color:#646469;padding:4px 0;">Dispositivo</td><td align="right" style="color:#1d1d1f;padding:4px 0;">${escapeHtml(device || "Dispositivo desconocido")}</td></tr>
 <tr><td style="color:#646469;padding:4px 0;">Vence en</td><td align="right" style="color:#1d1d1f;padding:4px 0;">${deviceCodeMinutes} minutos</td></tr>

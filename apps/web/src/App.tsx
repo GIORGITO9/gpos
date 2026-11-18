@@ -55,6 +55,7 @@ import {
   can,
   isStore,
   hiddenPaths,
+  roleLabel,
 } from "./api";
 import { Button, Field, Loading, Modal, useToast } from "./ui";
 import { flush, useOutbox } from "./outbox";
@@ -874,9 +875,7 @@ function Shell() {
           <span className="avatar">{s.user.name.slice(0, 1)}</span>
           <span>
             <strong>{s.user.name}</strong>
-            <small>
-              {s.user.role === "OWNER" ? "Propietario" : s.user.role}
-            </small>
+            <small>{roleLabel(s.user, s.user.role)}</small>
           </span>
           <LogOut size={17} />
         </button>
