@@ -120,4 +120,4 @@ La prueba integral crea **empresas QA ficticias nuevas**; no borra registros exi
 
 Consulta [docs/ALCANCE.md](docs/ALCANCE.md) para diferenciar lo implementado, los límites actuales y las fases pendientes. La integración real con WhatsApp, DIAN/proveedor fiscal, pasarelas y email **no está implementada ni activada**. Seleccionar un origen en el POS solo registra el canal manualmente.
 
-La preparación para Hostinger está en [docs/DESPLIEGUE.md](docs/DESPLIEGUE.md). No se ha desplegado en una cuenta de hosting ni configurado un dominio público.
+La preparación para Hostinger está en [docs/DESPLIEGUE.md](docs/DESPLIEGUE.md) y el estado de seguridad en [AUDITORIA_SEGURIDAD.md](AUDITORIA_SEGURIDAD.md). No se ha desplegado en una cuenta de hosting ni configurado un dominio público.

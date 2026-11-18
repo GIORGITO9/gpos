@@ -3,21 +3,209 @@ import {
   ForbiddenException,
   BadRequestException,
   ServiceUnavailableException,
+  HttpException,
+  HttpStatus,
 } from "@nestjs/common";
 import { Request, Response } from "express";
-import { createHash, randomBytes } from "node:crypto";
+import {
+  createHash,
+  randomBytes,
+  randomInt,
+  timingSafeEqual,
+} from "node:crypto";
 import jwt from "jsonwebtoken";
 import bcrypt from "bcryptjs";
 import { z } from "zod";
 import { db, transaction } from "./db";
 import { terms } from "./legal-terms";
 import { allowed, roles } from "./domain";
-import { recoveryMailer, recoveryMinutes } from "./recovery-mail";
+import {
+  recoveryMailer,
+  recoveryMinutes,
+  deviceCodeMailer,
+  deviceCodeMinutes,
+} from "./recovery-mail";
 export function trialDays() {
   const days = Number(process.env.TRIAL_DAYS || 14);
   return Number.isSafeInteger(days) && days > 0 && days <= 365 ? days : 14;
 }
 export const hash = (s: string) => createHash("sha256").update(s).digest("hex");
+// bcrypt ignora lo que pasa de 72 bytes: se rechaza en vez de truncar en silencio.
+export const passwordSchema = z
+  .string()
+  .min(10)
+  .max(72)
+  .refine(
+    (value) => Buffer.byteLength(value, "utf8") <= 72,
+    "La contraseña supera el tamaño permitido",
+  );
+// Iguala el tiempo de respuesta cuando el correo no existe (evita enumerar cuentas).
+const timingHash = bcrypt.hashSync(randomBytes(16).toString("hex"), 12);
+// Bloqueo temporal por cuenta tras intentos fallidos, además del límite por IP.
+// Vive en la base: sobrevive a reinicios y se comparte entre instancias.
+const maxLoginFailures = 8;
+const loginLockMs = 15 * 60_000;
+async function loginLocked(email: string, now: Date) {
+  const entry = await db.loginAttempt.findUnique({ where: { email } });
+  return !!entry && entry.windowEnds > now && entry.count >= maxLoginFailures;
+}
+async function recordLoginFailure(email: string, now: Date) {
+  const windowEnds = new Date(now.getTime() + loginLockMs);
+  const current = await db.loginAttempt.findUnique({ where: { email } });
+  const row = await db.loginAttempt.upsert({
+    where: { email },
+    create: { email, count: 1, windowEnds },
+    update:
+      current && current.windowEnds > now
+        ? { count: { increment: 1 }, windowEnds }
+        : { count: 1, windowEnds },
+  });
+  return row.count;
+}
+
+// Verificación de dispositivo: un código por correo autoriza el dispositivo 180 días.
+const deviceCookie = "gpos_device";
+const deviceDays = 180;
+const maxCodeAttempts = 5;
+const deviceLabel = (req: Request) =>
+  String(req.headers["user-agent"] || "").slice(0, 180);
+const codeHash = (userId: string, code: string) => hash(`${userId}:${code}`);
+const maskEmail = (email: string) => {
+  const [name, domain] = email.split("@");
+  return `${name.slice(0, 1)}•••@${domain}`;
+};
+async function trustedDevice(req: Request, userId: string, now: Date) {
+  const raw = req.cookies?.[deviceCookie];
+  if (typeof raw !== "string" || !raw) return null;
+  const device = await db.trustedDevice.findUnique({
+    where: { tokenHash: hash(raw) },
+  });
+  return device && device.userId === userId && device.expiresAt > now
+    ? device
+    : null;
+}
+async function trustDevice(req: Request, res: Response, userId: string) {
+  const raw = randomBytes(32).toString("hex");
+  await db.trustedDevice.create({
+    data: {
+      userId,
+      tokenHash: hash(raw),
+      label: deviceLabel(req),
+      expiresAt: new Date(Date.now() + deviceDays * 86400000),
+    },
+  });
+  res.cookie(deviceCookie, raw, {
+    httpOnly: true,
+    secure: process.env.NODE_ENV === "production",
+    sameSite: "strict",
+    path: "/api/v1/auth",
+    maxAge: deviceDays * 86400000,
+  });
+}
+// Sin SMTP en desarrollo el código va a la consola del servidor; en producción
+// sin SMTP no hay forma de entregarlo y la verificación queda desactivada.
+function deviceCodeSender() {
+  const send = deviceCodeMailer();
+  if (send) return send;
+  if (process.env.NODE_ENV !== "production")
+    return async (to: string, code: string) =>
+      console.info(`[desarrollo] Código de verificación para ${to}: ${code}`);
+}
+async function startDeviceChallenge(
+  u: { id: string; email: string; tenantId: string | null },
+  req: Request,
+  send: NonNullable<ReturnType<typeof deviceCodeSender>>,
+) {
+  const code = String(randomInt(0, 1_000_000)).padStart(6, "0");
+  const challenge = await transaction(async (tx) => {
+    await tx.loginChallenge.deleteMany({ where: { userId: u.id } });
+    return tx.loginChallenge.create({
+      data: {
+        userId: u.id,
+        codeHash: codeHash(u.id, code),
+        expiresAt: new Date(Date.now() + deviceCodeMinutes * 60_000),
+      },
+    });
+  });
+  try {
+    await send(u.email, code, deviceLabel(req));
+  } catch {
+    await db.loginChallenge.deleteMany({ where: { id: challenge.id } });
+    throw new ServiceUnavailableException(
+      "No pudimos enviar el código de verificación. Intenta de nuevo en un momento.",
+    );
+  }
+  await audit(db, u, "DEVICE_CHALLENGE", "auth", undefined, {
+    ip: req.ip,
+    device: deviceLabel(req),
+  });
+  return {
+    verification: {
+      challengeId: challenge.id,
+      email: maskEmail(u.email),
+      minutes: deviceCodeMinutes,
+    },
+  };
+}
+async function verifyDevice(body: unknown, req: Request, res: Response) {
+  const b = z
+    .object({
+      challengeId: z.string().min(1).max(64),
+      code: z
+        .string()
+        .trim()
+        .regex(/^\d{6}$/, "Escribe los 6 dígitos del código"),
+    })
+    .parse(body);
+  const now = new Date();
+  const expired = () =>
+    new BadRequestException(
+      "El código venció. Inicia sesión de nuevo para recibir otro.",
+    );
+  const challenge = await db.loginChallenge.findUnique({
+    where: { id: b.challengeId },
+    include: { user: true },
+  });
+  if (
+    !challenge ||
+    challenge.expiresAt <= now ||
+    challenge.attempts >= maxCodeAttempts ||
+    !challenge.user.active
+  )
+    throw expired();
+  const matches = timingSafeEqual(
+    Buffer.from(codeHash(challenge.userId, b.code)),
+    Buffer.from(challenge.codeHash),
+  );
+  if (!matches) {
+    await db.loginChallenge.updateMany({
+      where: { id: challenge.id },
+      data: { attempts: { increment: 1 } },
+    });
+    // Los códigos fallidos también cuentan para el bloqueo de la cuenta.
+    await recordLoginFailure(challenge.user.email, now);
+    await audit(db, challenge.user, "DEVICE_CODE_FAILED", "auth", undefined, {
+      ip: req.ip,
+    });
+    throw new BadRequestException(
+      challenge.attempts + 1 >= maxCodeAttempts
+        ? "Demasiados intentos. Inicia sesión de nuevo para recibir otro código."
+        : "Código incorrecto. Revisa el correo e inténtalo de nuevo.",
+    );
+  }
+  // Consumo atómico: el mismo código no autoriza dos veces.
+  const consumed = await db.loginChallenge.deleteMany({
+    where: { id: challenge.id, attempts: challenge.attempts },
+  });
+  if (!consumed.count) throw expired();
+  await trustDevice(req, res, challenge.userId);
+  await db.loginAttempt.deleteMany({ where: { email: challenge.user.email } });
+  await audit(db, challenge.user, "DEVICE_VERIFIED", "auth", undefined, {
+    ip: req.ip,
+    device: deviceLabel(req),
+  });
+  return issue(challenge.user, res);
+}
 export async function audit(
   tx: any,
   user: any,
@@ -209,14 +397,7 @@ async function resetPassword(body: unknown) {
   const { token, password } = z
     .object({
       token: z.string().regex(/^[a-f0-9]{64}$/, "El enlace no es válido"),
-      password: z
-        .string()
-        .min(10)
-        .max(72)
-        .refine(
-          (value) => Buffer.byteLength(value, "utf8") <= 72,
-          "La contraseña supera el tamaño permitido",
-        ),
+      password: passwordSchema,
     })
     .parse(body);
   const tokenHash = hash(token);
@@ -239,6 +420,9 @@ async function resetPassword(body: unknown) {
     });
     if (!changed.count) throw invalidLink();
     await tx.refreshSession.deleteMany({ where: { userId: candidate.userId } });
+    // Cambiar la contraseña desautoriza todos los dispositivos.
+    await tx.trustedDevice.deleteMany({ where: { userId: candidate.userId } });
+    await tx.loginChallenge.deleteMany({ where: { userId: candidate.userId } });
   });
   return { updated: true };
 }
@@ -265,16 +449,47 @@ export async function authAction(
     return { accepted: true };
   }
   if (action === "reset-password") return resetPassword(body);
+  if (action === "verify-device") return verifyDevice(body, req, res);
   if (action === "login") {
     const b = z
       .object({ email: z.string().email(), password: z.string().min(1) })
       .parse(body);
-    const u = await db.user.findUnique({
-      where: { email: b.email.toLowerCase() },
-    });
-    if (!u?.active || !(await bcrypt.compare(b.password, u.passwordHash)))
+    const email = b.email.toLowerCase();
+    const now = new Date();
+    const u = await db.user.findUnique({ where: { email } });
+    // Un dispositivo ya autorizado no queda bloqueado por intentos de terceros.
+    const device = u ? await trustedDevice(req, u.id, now) : null;
+    if (!device && (await loginLocked(email, now)))
+      throw new HttpException(
+        "Demasiados intentos fallidos. Espera 15 minutos o recupera tu contraseña.",
+        HttpStatus.TOO_MANY_REQUESTS,
+      );
+    const valid = await bcrypt.compare(
+      b.password,
+      u?.passwordHash ?? timingHash,
+    );
+    if (!u?.active || !valid) {
+      const attempts = await recordLoginFailure(email, now);
+      if (u)
+        await audit(db, u, "LOGIN_FAILED", "auth", undefined, {
+          ip: req.ip,
+          attempts,
+        });
       throw new UnauthorizedException("Correo o contraseña incorrectos");
-    await audit(db, u, "LOGIN", "auth");
+    }
+    await db.loginAttempt.deleteMany({ where: { email } });
+    if (!device) {
+      const send = deviceCodeSender();
+      if (send) return startDeviceChallenge(u, req, send);
+    } else
+      await db.trustedDevice.update({
+        where: { id: device.id },
+        data: { lastUsedAt: now },
+      });
+    await audit(db, u, "LOGIN", "auth", undefined, {
+      ip: req.ip,
+      trustedDevice: !!device,
+    });
     return issue(u, res);
   }
   if (action === "register") {
@@ -282,7 +497,7 @@ export async function authAction(
       .object({
         name: z.string().min(2).max(100),
         email: z.string().email(),
-        password: z.string().min(10).max(128),
+        password: passwordSchema,
         termsAccepted: z.literal(true, {
           error: "Debes aceptar los términos de uso",
         }),
@@ -346,6 +561,8 @@ export async function authAction(
       });
       return user;
     });
+    // Quien crea la cuenta ya está en este dispositivo: no se le pide código.
+    await trustDevice(req, res, u.id);
     return issue(u, res);
   }
   if (action === "refresh") {
@@ -357,10 +574,13 @@ export async function authAction(
     });
     if (!session || session.expiresAt < new Date() || !session.user.active)
       throw new UnauthorizedException();
-    const deleted = await db.refreshSession.deleteMany({
-      where: { id: session.id },
+    // Rotación con 30 s de gracia: si dos pestañas renuevan a la vez, ambas
+    // reciben sesión en vez de que la segunda quede fuera.
+    const graceEnds = new Date(Date.now() + 30_000);
+    await db.refreshSession.updateMany({
+      where: { id: session.id, expiresAt: { gt: graceEnds } },
+      data: { expiresAt: graceEnds },
     });
-    if (!deleted.count) throw new UnauthorizedException();
     return issue(session.user, res);
   }
   if (action === "logout") {

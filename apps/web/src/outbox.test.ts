@@ -19,8 +19,9 @@ Object.defineProperty(globalThis, "navigator", {
   },
 });
 
-const order = (requestKey: string) => ({
+const order = (requestKey: string, userId = "u1") => ({
   requestKey,
+  userId,
   branchId: "b1",
   body: { service: "RECOGER", items: [] },
   label: "Para recoger · 1 unidad",
@@ -43,26 +44,46 @@ test("la cola guarda sin red y envía, conserva o descarta según la respuesta",
 
   // Sin conexión no intenta enviar.
   online = false;
-  await flush(notify, async () => assert.fail("no debe enviar sin red"));
+  await flush(notify, async () => assert.fail("no debe enviar sin red"), "u1");
   assert.equal(pending().length, 2);
 
   // Se corta a mitad: el primero sale, el segundo se conserva.
   online = true;
   let calls = 0;
-  await flush(notify, async (o) => {
-    if (calls++) throw new TypeError("Failed to fetch");
-    return { data: { number: 7, key: o.requestKey } };
-  });
+  await flush(
+    notify,
+    async (o) => {
+      if (calls++) throw new TypeError("Failed to fetch");
+      return { data: { number: 7, key: o.requestKey } };
+    },
+    "u1",
+  );
   assert.deepEqual(
     pending().map((o: any) => o.requestKey),
     ["b"],
   );
   assert.match(messages.at(-1)!, /#7/);
 
-  // El servidor lo rechaza: se descarta y se avisa.
-  await flush(notify, async () => {
-    throw new Error("Producto inactivo");
-  });
-  assert.equal(pending().length, 0);
+  // Otro usuario en el mismo equipo no envía pedidos ajenos.
+  enqueue(order("ajeno", "u2"));
+  await flush(
+    notify,
+    async () => assert.fail("no debe enviar pedidos ajenos"),
+    "u1x",
+  );
+  assert.equal(pending().length, 2);
+
+  // El servidor lo rechaza: se descarta y se avisa; el ajeno se conserva.
+  await flush(
+    notify,
+    async () => {
+      throw new Error("Producto inactivo");
+    },
+    "u1",
+  );
+  assert.deepEqual(
+    pending().map((o: any) => o.requestKey),
+    ["ajeno"],
+  );
   assert.match(messages.at(-1)!, /Producto inactivo/);
 });

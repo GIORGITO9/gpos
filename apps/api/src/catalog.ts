@@ -7,7 +7,7 @@ import { z } from "zod";
 import type { Prisma } from "@prisma/client";
 import bcrypt from "bcryptjs";
 import { db, transaction } from "./db";
-import { audit, roles } from "./auth";
+import { audit, roles, passwordSchema } from "./auth";
 const text = z.string().trim().min(1).max(200),
   optional = z.string().trim().max(500).nullish();
 export const money = z.number().int().min(0).max(1000000000);
@@ -86,7 +86,7 @@ export const schemas: Record<string, z.ZodTypeAny> = {
   users: z.object({
     name: text,
     email: z.string().email(),
-    password: z.string().min(10).max(128).optional(),
+    password: passwordSchema.optional(),
     role: z.enum([
       "ADMIN",
       "GERENTE",
@@ -300,6 +300,17 @@ export async function save(
     if (resource === "users") {
       if (id === u.id)
         throw new BadRequestException("No puedes cambiar tu propio acceso");
+      // Un administrador no puede tomar ni degradar la cuenta del propietario.
+      if (
+        id &&
+        u.role !== "OWNER" &&
+        (await tx.user.count({
+          where: { id, tenantId: u.tenantId, role: "OWNER" },
+        }))
+      )
+        throw new ForbiddenException(
+          "Solo el propietario puede modificar su cuenta",
+        );
       const branches = await tx.branch.findMany({
         where: {
           id: { in: data.branchIds },
