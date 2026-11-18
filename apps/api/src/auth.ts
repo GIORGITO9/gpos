@@ -452,7 +452,17 @@ export async function authAction(
   if (action === "verify-device") return verifyDevice(body, req, res);
   if (action === "login") {
     const b = z
-      .object({ email: z.string().email(), password: z.string().min(1) })
+      .object({
+        email: z
+          .string()
+          .trim()
+          .email("Escribe un correo válido")
+          .max(191, "El correo es demasiado largo"),
+        password: z
+          .string()
+          .min(1, "Escribe tu contraseña")
+          .max(128, "La contraseña es demasiado larga"),
+      })
       .parse(body);
     const email = b.email.toLowerCase();
     const now = new Date();
@@ -496,7 +506,11 @@ export async function authAction(
     const b = z
       .object({
         name: z.string().min(2).max(100),
-        email: z.string().email(),
+        email: z
+          .string()
+          .trim()
+          .email("Escribe un correo válido")
+          .max(191, "El correo es demasiado largo"),
         password: passwordSchema,
         termsAccepted: z.literal(true, {
           error: "Debes aceptar los términos de uso",

@@ -7,12 +7,26 @@ import bcrypt from "bcryptjs";
 import { db } from "../src/db";
 import { authAction, passwordSchema } from "../src/auth";
 import { save } from "../src/catalog";
+import { emailLayout, escapeHtml } from "../src/recovery-mail";
 
 test("contraseñas: se rechaza lo que bcrypt truncaría en silencio", () => {
   assert.equal(passwordSchema.safeParse("a".repeat(72)).success, true);
   assert.equal(passwordSchema.safeParse("a".repeat(73)).success, false);
   assert.equal(passwordSchema.safeParse("ñ".repeat(37)).success, false); // 74 bytes
   assert.equal(passwordSchema.safeParse("corta").success, false);
+});
+
+test("correos: el User-Agent no puede inyectar HTML", () => {
+  const ua = '<img src=x onerror="alert(1)">';
+  assert.equal(escapeHtml(ua).includes("<"), false);
+  const html = emailLayout({
+    preheader: "p",
+    title: "t",
+    intro: "i",
+    body: escapeHtml(ua),
+    note: "n",
+  });
+  assert.equal(html.includes("<img"), false);
 });
 
 test(
