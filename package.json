@@ -10,7 +10,7 @@
     "pos:print": "node scripts/pos-print.mjs",
     "build": "node scripts/build.mjs",
     "build:hostinger": "node scripts/build.mjs --hostinger",
-    "test": "tsx --test apps/api/test/*.test.ts",
+    "test": "tsx --test apps/api/test/*.test.ts apps/web/src/*.test.ts",
     "db:generate": "prisma generate",
     "db:migrate": "prisma migrate deploy",
     "db:seed": "tsx prisma/seed.ts",

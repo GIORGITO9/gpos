@@ -57,6 +57,7 @@ import {
   hiddenPaths,
 } from "./api";
 import { Button, Field, Loading, Modal, useToast } from "./ui";
+import { flush, useOutbox } from "./outbox";
 import { Landing } from "./Landing";
 const loadPages = () => import("./pages");
 const Dashboard = lazy(() =>
@@ -514,6 +515,24 @@ function PasswordRecovery({ reset = false }: { reset?: boolean }) {
   );
 }
 function Shell() {
+  const toast = useToast(),
+    outbox = useOutbox(),
+    [online, setOnline] = useState(navigator.onLine);
+  useEffect(() => {
+    const send = () => flush(toast).then(() => qc.invalidateQueries());
+    const up = () => {
+      setOnline(true);
+      void send();
+    };
+    const down = () => setOnline(false);
+    window.addEventListener("online", up);
+    window.addEventListener("offline", down);
+    void send();
+    return () => {
+      window.removeEventListener("online", up);
+      window.removeEventListener("offline", down);
+    };
+  }, []);
   const s = useSession(),
     navigate = useNavigate(),
     location = useLocation(),
@@ -800,6 +819,13 @@ function Shell() {
           id="main-content"
           tabIndex={-1}
         >
+          {(!online || outbox.length > 0) && (
+            <div className="offline-banner" role="status">
+              {online
+                ? `Enviando ${outbox.length} ${outbox.length === 1 ? "pedido pendiente" : "pedidos pendientes"}…`
+                : `Sin conexión${outbox.length ? ` · ${outbox.length} ${outbox.length === 1 ? "pedido pendiente" : "pedidos pendientes"} de envío` : ". Los pedidos nuevos se guardarán en este dispositivo."}`}
+            </div>
+          )}
           <Suspense fallback={<Loading />}>
             <Routes>
               {/* Van primero: ante rutas empatadas React Router usa la primera declarada. */}

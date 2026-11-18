@@ -207,6 +207,28 @@ test(
         /no disponible para tiendas/,
       );
 
+      // Reenvío tras perder la conexión: misma clave, un solo pedido.
+      const offlineOrder = {
+        service: "DOMICILIO",
+        customerId: undefined as string | undefined,
+        address: "Calle 1",
+        requestKey: randomUUID(),
+        items: [{ productId: service.id, quantity: 1 }],
+      };
+      const customer = await db.customer.create({
+        data: { tenantId: tenant.id, name: "Cliente QA" },
+      });
+      offlineOrder.customerId = customer.id;
+      const first: any = await createOrder(offlineOrder, u, branchId);
+      const again: any = await createOrder(offlineOrder, u, branchId);
+      assert.equal(again.id, first.id);
+      assert.equal(
+        await db.order.count({
+          where: { requestKey: offlineOrder.requestKey },
+        }),
+        1,
+      );
+
       // Con mesas activadas, la cuenta de mesa no pasa por cocina: queda lista para cobrar.
       u.tenant.usesTables = true;
       const table = await db.diningTable.create({
@@ -229,6 +251,7 @@ test(
         db.payment.deleteMany({ where: { order: orders } }),
         db.orderItem.deleteMany({ where: { order: orders } }),
         db.orderRound.deleteMany({ where: { order: orders } }),
+        db.delivery.deleteMany({ where: { order: orders } }),
         db.order.deleteMany({ where: orders }),
         db.cashMovement.deleteMany({
           where: { session: { register: { branchId } } },
@@ -241,6 +264,7 @@ test(
         db.product.deleteMany({ where: { tenantId: t } }),
         db.ingredient.deleteMany({ where: { tenantId: t } }),
         db.auditLog.deleteMany({ where: { tenantId: t } }),
+        db.customer.deleteMany({ where: { tenantId: t } }),
         db.user.deleteMany({ where: { tenantId: t } }),
         db.diningTable.deleteMany({ where: { branchId } }),
         db.branch.deleteMany({ where: { tenantId: t } }),

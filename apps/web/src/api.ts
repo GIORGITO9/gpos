@@ -36,6 +36,7 @@ export async function api(
   body?: any,
   method?: string,
   retry = true,
+  branchId?: string,
 ): Promise<any> {
   const s = useSession.getState();
   const r = await fetch("/api/v1/" + path, {
@@ -44,14 +45,16 @@ export async function api(
     headers: {
       "Content-Type": "application/json",
       ...(s.token ? { Authorization: "Bearer " + s.token } : {}),
-      ...(s.branchId ? { "X-Branch-Id": s.branchId } : {}),
+      ...(branchId || s.branchId
+        ? { "X-Branch-Id": branchId || s.branchId }
+        : {}),
     },
     ...(body ? { body: JSON.stringify(body) } : {}),
   });
   if (r.status === 401 && retry && !path.startsWith("auth/")) {
     try {
       await restore();
-      return api(path, body, method, false);
+      return api(path, body, method, false, branchId);
     } catch {
       useSession.getState().clear();
       throw new Error("La sesión expiró. Inicia sesión de nuevo.");
