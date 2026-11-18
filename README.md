@@ -1,4 +1,6 @@
-# GPOS · SaaS POS para negocios de comidas
+# GPOS · SaaS POS para restaurantes y tiendas
+
+GPOS funciona en dos modos, que el Super Admin elige por empresa: **Restaurante** (mesas, cocina y recetas) y **Tienda** de productos o servicios (venta en mostrador, inventario por producto, servicios sin stock, despachos de domicilios y mesas opcionales). Los pedidos enviados a cocina sin conexión se guardan en el dispositivo y se envían solos al volver la red.
 
 Aplicación web funcional con React + TypeScript + Vite, API NestJS, Prisma y MySQL 8. La interfaz sigue la guía `appledesing.md`: tipografía del sistema, superficies claras, navegación translúcida, feedback inmediato y movimiento reducido.
 

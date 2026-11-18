@@ -10,6 +10,16 @@ Se requiere un entorno que ejecute procesos Node.js y permita conectar con MySQL
 4. Añade las variables indicadas abajo en hPanel. Usa una base nueva para GPOS y conserva el puerto que asigne Hostinger. Configura `SERVE_WEB=true`, `NODE_ENV=production`, `FRONTEND_URL` con el dominio HTTPS definitivo y `NPM_CONFIG_INCLUDE=dev` para que la compilación tenga Prisma CLI, TypeScript y Vite.
 5. Revisa el log de compilación y verifica `/api/v1/health`, el acceso por HTTPS y un pedido de prueba. El comando aplica las migraciones pendientes y crea los planes iniciales sin datos demo ni sobrescribir planes existentes.
 
+## Actualizar una instalación existente
+
+Cada despliegue desde `main` ejecuta `npm run build:hostinger`, que aplica automáticamente las migraciones pendientes antes de arrancar. Esta versión agrega tres, todas solo de columnas e índices nuevos (no borran datos):
+
+- `20261117120000_business_type`: modo Restaurante/Tienda por empresa (las existentes quedan como Restaurante).
+- `20261117130000_store_tables`: mesas opcionales para tiendas (desactivadas por defecto).
+- `20261118090000_order_request_key`: clave anti-duplicados para pedidos enviados sin conexión.
+
+Después del despliegue, cambia el modo de cada empresa desde **Super Admin → Empresas → Administrar → Tipo de negocio**. No se pueden desactivar las mesas de una tienda mientras tenga cuentas de mesa abiertas.
+
 ## Recuperación de contraseñas
 
 En **Sitios web → gpos.webcodecol.com → Variables de entorno**, guarda `SMTP_PASSWORD` con la contraseña del buzón `no-reply@webcodecol.com`. GPOS usa ese remitente y el servidor `smtp.hostinger.com:465` (TLS) por defecto. Para usar otro buzón o servidor, configura `SMTP_USER`, `SMTP_HOST` y `SMTP_PORT`. El primer origen de `FRONTEND_URL` debe ser el dominio público HTTPS de GPOS para construir el enlace.

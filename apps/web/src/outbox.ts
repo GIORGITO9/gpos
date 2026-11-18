@@ -35,19 +35,9 @@ export function enqueue(order: PendingOrder) {
   write([...snapshot.filter((o) => o.requestKey !== order.requestKey), order]);
 }
 
-// Carga diferida: la cola no arrastra el cliente HTTP (ni sus dependencias) hasta enviar.
-const send = async (order: PendingOrder) =>
-  (await import("./api")).api(
-    "orders",
-    { ...order.body, requestKey: order.requestKey },
-    "POST",
-    true,
-    order.branchId,
-  );
-
 export async function flush(
   notify: (message: string, error?: boolean) => void,
-  post: (order: PendingOrder) => Promise<any> = send,
+  post: (order: PendingOrder) => Promise<{ data: { number: number } }>,
 ) {
   if (flushing || !navigator.onLine || !snapshot.length) return;
   flushing = true;
