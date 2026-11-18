@@ -519,7 +519,16 @@ function Shell() {
     outbox = useOutbox(),
     [online, setOnline] = useState(navigator.onLine);
   useEffect(() => {
-    const send = () => flush(toast).then(() => qc.invalidateQueries());
+    const send = () =>
+      flush(toast, (order) =>
+        api(
+          "orders",
+          { ...order.body, requestKey: order.requestKey },
+          "POST",
+          true,
+          order.branchId,
+        ),
+      ).then(() => qc.invalidateQueries());
     const up = () => {
       setOnline(true);
       void send();
