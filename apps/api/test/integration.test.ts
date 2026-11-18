@@ -1,7 +1,7 @@
 import "dotenv/config";
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { randomUUID } from "node:crypto";
+import { createHash, randomBytes, randomUUID } from "node:crypto";
 const base = process.env.TEST_API_URL || "http://127.0.0.1:3000/api/v1";
 let token = "",
   branch = "";
@@ -110,10 +110,30 @@ test(
       branchIds: [branch],
     });
     assert.equal(cashier.status, 201);
-    const login = await call("auth/login", {
+    // Un dispositivo nuevo recibe un código por correo. La prueba no lee correo:
+    // registra un dispositivo ya autorizado y lo envía como lo haría el navegador.
+    const deviceToken = randomBytes(32).toString("hex");
+    const devices = new (await import("@prisma/client")).PrismaClient();
+    await devices.trustedDevice.create({
+      data: {
+        userId: cashier.data.id,
+        tokenHash: createHash("sha256").update(deviceToken).digest("hex"),
+        expiresAt: new Date(Date.now() + 86400000),
+      },
+    });
+    await devices.$disconnect();
+    const unverified = await call("auth/login", {
       email: `cashier-${suffix}@example.test`,
       password,
     });
+    assert.ok(unverified.data.verification, "Dispositivo nuevo pide código");
+    assert.equal(unverified.data.access_token, undefined);
+    const login = await call(
+      "auth/login",
+      { email: `cashier-${suffix}@example.test`, password },
+      undefined,
+      { Cookie: `gpos_device=${deviceToken}` },
+    );
     token = login.data.access_token;
     assert.equal(
       (await call("products", { name: "no autorizado", price: 1 })).status,
@@ -1037,7 +1057,10 @@ test(
     } finally {
       await db.$disconnect();
     }
-    const cookie = a.headers.get("set-cookie")!.split(";")[0];
+    const cookie = a.headers
+      .getSetCookie()
+      .find((c: string) => c.startsWith("gpos_refresh="))!
+      .split(";")[0];
     assert.equal(
       (await call("auth/logout", {}, undefined, { Cookie: cookie })).status,
       201,

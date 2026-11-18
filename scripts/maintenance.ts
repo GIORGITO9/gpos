@@ -26,6 +26,9 @@ async function main() {
       });
     await db.refreshSession.deleteMany({ where: { expiresAt: { lt: now } } });
     await db.passwordReset.deleteMany({ where: { expiresAt: { lte: now } } });
+    await db.trustedDevice.deleteMany({ where: { expiresAt: { lte: now } } });
+    await db.loginChallenge.deleteMany({ where: { expiresAt: { lte: now } } });
+    await db.loginAttempt.deleteMany({ where: { windowEnds: { lte: now } } });
     console.log(
       JSON.stringify({
         expiredTrials: expired.length,

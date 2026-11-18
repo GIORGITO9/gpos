@@ -883,9 +883,24 @@ async function main() {
     throw new Error("JWT_SECRET debe tener al menos 32 caracteres");
   const app = await NestFactory.create<NestExpressApplication>(AppModule);
   app.enableShutdownHooks();
+  // Detrás del proxy del hosting, req.ip debe ser la IP real del cliente para que el
+  // límite de peticiones no agrupe a todos los usuarios. Solo saltos de confianza:
+  // TRUST_PROXY=1 (un proxy) o una lista de IPs/subredes. Sin definir: no se confía.
+  const trustProxy = process.env.TRUST_PROXY?.trim();
+  if (trustProxy)
+    app.set(
+      "trust proxy",
+      /^\d+$/.test(trustProxy) ? Number(trustProxy) : trustProxy,
+    );
   app.use(
     helmet({
-      contentSecurityPolicy: { directives: { upgradeInsecureRequests: null } },
+      contentSecurityPolicy: {
+        directives: {
+          upgradeInsecureRequests: null,
+          // Sin 'unsafe-inline': Vite emite CSS en archivos y React aplica estilos por CSSOM.
+          styleSrc: ["'self'"],
+        },
+      },
     }),
   );
   app.use(cookieParser());
@@ -893,6 +908,22 @@ async function main() {
     origin: (process.env.FRONTEND_URL || "http://localhost:5173").split(","),
     credentials: true,
   });
+  // Límite general contra abuso automatizado; holgado para POS y cocina (sondeo cada 4 s).
+  app.use(
+    "/api/v1",
+    rateLimit({
+      windowMs: 60000,
+      limit: 600,
+      standardHeaders: "draft-8",
+      legacyHeaders: false,
+      skip: (req) => req.path === "/health",
+      message: {
+        success: false,
+        message: "Demasiadas solicitudes. Espera un momento.",
+        code: "429",
+      },
+    }),
+  );
   app.use(
     "/api/v1/auth",
     rateLimit({
@@ -913,7 +944,9 @@ async function main() {
         if (
           req.path === "/api" ||
           req.path.startsWith("/api/") ||
-          path.extname(req.path)
+          path.extname(req.path) ||
+          // Rutas a archivos ocultos (/.env, /.git/...) responden 404, no la app.
+          /(^|\/)\./.test(req.path)
         ) {
           return next();
         }

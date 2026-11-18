@@ -94,6 +94,8 @@ model User {
  branches UserBranch[]
  sessions RefreshSession[]
  passwordReset PasswordReset?
+ trustedDevices TrustedDevice[]
+ loginChallenges LoginChallenge[]
  orders Order[]
  cashSessions CashSession[]
  @@index([tenantId])
@@ -112,6 +114,38 @@ model RefreshSession {
  tokenHash String @unique
  expiresAt DateTime
  createdAt DateTime @default(now())
+}
+// Dispositivo autorizado por código de correo; no vuelve a pedir verificación mientras siga vigente.
+model TrustedDevice {
+ id String @id @default(cuid())
+ userId String
+ user User @relation(fields:[userId],references:[id],onDelete:Cascade)
+ tokenHash String @unique @db.Char(64)
+ label String @default("")
+ createdAt DateTime @default(now())
+ lastUsedAt DateTime @default(now())
+ expiresAt DateTime
+ @@index([userId])
+ @@index([expiresAt])
+}
+// Código de 6 dígitos enviado al correo para autorizar un dispositivo nuevo.
+model LoginChallenge {
+ id String @id @default(cuid())
+ userId String
+ user User @relation(fields:[userId],references:[id],onDelete:Cascade)
+ codeHash String @db.Char(64)
+ attempts Int @default(0)
+ expiresAt DateTime
+ createdAt DateTime @default(now())
+ @@index([userId])
+ @@index([expiresAt])
+}
+// Intentos fallidos por correo (bloqueo temporal persistente entre reinicios e instancias).
+model LoginAttempt {
+ email String @id
+ count Int @default(0)
+ windowEnds DateTime
+ @@index([windowEnds])
 }
 model PasswordReset {
  userId String @id

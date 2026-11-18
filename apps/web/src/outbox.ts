@@ -4,6 +4,8 @@ import { useSyncExternalStore } from "react";
 // shortcut: localStorage (síncrono, ~5 MB) basta para pocos pedidos; pasar a IndexedDB si se encolan cientos.
 export type PendingOrder = {
   requestKey: string;
+  // Solo quien tomó el pedido lo envía: otro usuario en el mismo equipo no lo ve ni lo manda.
+  userId: string;
   branchId: string;
   body: Record<string, unknown>;
   label: string;
@@ -38,11 +40,13 @@ export function enqueue(order: PendingOrder) {
 export async function flush(
   notify: (message: string, error?: boolean) => void,
   post: (order: PendingOrder) => Promise<{ data: { number: number } }>,
+  userId: string,
 ) {
-  if (flushing || !navigator.onLine || !snapshot.length) return;
+  const mine = snapshot.filter((o) => o.userId === userId);
+  if (flushing || !navigator.onLine || !mine.length) return;
   flushing = true;
   try {
-    for (const order of [...snapshot]) {
+    for (const order of mine) {
       try {
         const { data } = await post(order);
         notify(`Pedido #${data.number} enviado: ${order.label}`);

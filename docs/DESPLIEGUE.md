@@ -26,6 +26,14 @@ En **Sitios web → gpos.webcodecol.com → Variables de entorno**, guarda `SMTP
 
 Tras aplicar las variables, solicita la recuperación desde **¿Olvidaste tu contraseña?** con una cuenta de prueba que pueda recibir correo. Verifica que el mensaje llegue, que permita cambiar la contraseña y que esta funcione al iniciar sesión. El enlace vence en 30 minutos y solo puede usarse una vez. El cambio cierra las sesiones de la cuenta.
 
+## Verificación de dispositivos (dos pasos)
+
+Al iniciar sesión desde un dispositivo nuevo, GPOS envía un código de 6 dígitos al correo de la cuenta desde el mismo buzón `no-reply` de la recuperación de contraseña (`SMTP_PASSWORD`). El código vence en 10 minutos y admite 5 intentos. Después de verificarlo, ese navegador queda autorizado 180 días y no vuelve a pedir código. Cambiar la contraseña desautoriza todos los dispositivos de la cuenta.
+
+- **Producción sin `SMTP_PASSWORD`:** no hay forma de entregar el código y la verificación queda desactivada. Configura el buzón antes de abrir el acceso a clientes.
+- **Desarrollo sin SMTP:** el código se imprime en la consola del servidor.
+- Prueba en producción con una cuenta real: inicia sesión en un navegador nuevo, verifica que llegue el correo y que el segundo inicio desde ese navegador no pida código.
+
 ## Términos y reclamos
 
 Si cambia el texto de los términos, actualiza también su versión en `apps/api/src/legal-terms.ts`. Cada registro guarda una copia del documento aceptado, la versión, la fecha del servidor y la cuenta que aceptó. Super Admin puede descargar la constancia desde **Empresas → Administrar**. Las cuentas creadas antes de habilitar esta función figuran sin aceptación registrada.
@@ -43,6 +51,7 @@ Configura en el entorno del servidor, nunca en Git:
 - `PORT`: puerto asignado por el hosting.
 - `HOST`: `127.0.0.1` detrás de un proxy local o `0.0.0.0` si el contenedor de la plataforma lo requiere.
 - `SERVE_WEB=true` para servir la web compilada y la API desde el mismo proceso.
+- `TRUST_PROXY=1` cuando la app corre detrás de un proxy (Hostinger, Nginx). Sin esta variable, todos los usuarios compartirían el límite de peticiones de la IP del proxy. Usa el número exacto de proxies o sus IPs; no lo actives si la app recibe tráfico directo, porque permitiría falsificar la IP con `X-Forwarded-For`.
 - `SEED_DEMO=false`
 - `TRIAL_DAYS=14` o la duración comercial elegida.
 

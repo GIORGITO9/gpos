@@ -594,6 +594,7 @@ function OrderComposer({
         const { requestKey, ...body } = newOrder;
         enqueue({
           requestKey: requestKey as string,
+          userId: s.user.id,
           branchId: s.branchId,
           body,
           label: `${serviceLabel(s.user, service)} · ${itemCount} ${itemCount === 1 ? "unidad" : "unidades"}`,

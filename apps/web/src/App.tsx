@@ -194,6 +194,45 @@ function Auth({ register = false }: any) {
   const [error, setError] = useState("");
   const terms = useTerms(register);
   const [acceptedVersion, setAcceptedVersion] = useState("");
+  // Paso 2 en un dispositivo nuevo: código enviado al correo de la cuenta.
+  const [challenge, setChallenge] = useState<{
+    challengeId: string;
+    email: string;
+    minutes: number;
+  } | null>(null);
+  async function enter(data: any) {
+    await qc.cancelQueries();
+    qc.clear();
+    s.setSession(data);
+    s.setBranch(data.user.branches?.[0]?.branchId || "");
+    navigate(
+      data.user.role === "SUPER_ADMIN"
+        ? "/admin"
+        : register
+          ? "/app/onboarding"
+          : "/app",
+    );
+    if (register) toast("Tu negocio está listo para configurarse");
+  }
+  async function verify(e: any) {
+    e.preventDefault();
+    if (!challenge) return;
+    setPending(true);
+    setError("");
+    try {
+      const code = String(new FormData(e.currentTarget).get("code") || "");
+      const j = await api("auth/verify-device", {
+        challengeId: challenge.challengeId,
+        code,
+      });
+      await enter(j.data);
+    } catch (e: any) {
+      setError(e.message);
+      if (/venció|Demasiados/.test(e.message)) setChallenge(null);
+    } finally {
+      setPending(false);
+    }
+  }
   async function submit(e: any) {
     e.preventDefault();
     setPending(true);
@@ -212,18 +251,8 @@ function Auth({ register = false }: any) {
         "auth/" + (register ? "register" : "login"),
         register ? registration : body,
       );
-      await qc.cancelQueries();
-      qc.clear();
-      s.setSession(j.data);
-      s.setBranch(j.data.user.branches?.[0]?.branchId || "");
-      navigate(
-        j.data.user.role === "SUPER_ADMIN"
-          ? "/admin"
-          : register
-            ? "/app/onboarding"
-            : "/app",
-      );
-      if (register) toast("Tu negocio está listo para configurarse");
+      if (j.data.verification) setChallenge(j.data.verification);
+      else await enter(j.data);
     } catch (e: any) {
       setError(e.message);
       if (register) void terms.refetch();
@@ -231,6 +260,51 @@ function Auth({ register = false }: any) {
       setPending(false);
     }
   }
+  if (challenge)
+    return (
+      <AuthFrame>
+        <form onSubmit={verify}>
+          <h1>Verifica este dispositivo.</h1>
+          <p>
+            Enviamos un código de 6 dígitos a <strong>{challenge.email}</strong>
+            . Vence en {challenge.minutes} minutos.
+          </p>
+          <Field
+            label="Código de verificación"
+            name="code"
+            inputMode="numeric"
+            autoComplete="one-time-code"
+            pattern="\d{6}"
+            maxLength={6}
+            required
+            autoFocus
+          />
+          <small>Este dispositivo no volverá a pedir código.</small>
+          {error && (
+            <p className="form-error" role="alert">
+              {error}
+            </p>
+          )}
+          <Button variant="primary" disabled={pending}>
+            {pending ? "Verificando…" : "Verificar y entrar"}
+            <ArrowRight size={18} />
+          </Button>
+          <p className="auth-switch">
+            ¿No te llegó?{" "}
+            <button
+              type="button"
+              className="link-button"
+              onClick={() => {
+                setChallenge(null);
+                setError("");
+              }}
+            >
+              Volver a iniciar sesión
+            </button>
+          </p>
+        </form>
+      </AuthFrame>
+    );
   return (
     <AuthFrame>
       <form onSubmit={submit}>
@@ -368,15 +442,15 @@ function AuthFrame({
             empieza aquí.
           </h1>
           <p>
-            Tu salón, tu cocina y tus cuentas.
+            Tus ventas, tu inventario y tus cuentas.
             <br />
             Por fin, trabajando juntos.
           </p>
           <div className="auth-symbol">
-            <UtensilsCrossed size={88} strokeWidth={1} />
+            <Store size={88} strokeWidth={1} />
           </div>
         </div>
-        <span>GPOS · Hecho para negocios de comidas</span>
+        <span>GPOS · Para restaurantes y tiendas</span>
       </div>
       <main className="auth-main">
         <Link
@@ -516,18 +590,22 @@ function PasswordRecovery({ reset = false }: { reset?: boolean }) {
 }
 function Shell() {
   const toast = useToast(),
-    outbox = useOutbox(),
+    userId = useSession((st) => st.user?.id as string),
+    outbox = useOutbox().filter((o) => o.userId === userId),
     [online, setOnline] = useState(navigator.onLine);
   useEffect(() => {
     const send = () =>
-      flush(toast, (order) =>
-        api(
-          "orders",
-          { ...order.body, requestKey: order.requestKey },
-          "POST",
-          true,
-          order.branchId,
-        ),
+      flush(
+        toast,
+        (order) =>
+          api(
+            "orders",
+            { ...order.body, requestKey: order.requestKey },
+            "POST",
+            true,
+            order.branchId,
+          ),
+        userId,
       ).then(() => qc.invalidateQueries());
     const up = () => {
       setOnline(true);
@@ -541,7 +619,7 @@ function Shell() {
       window.removeEventListener("online", up);
       window.removeEventListener("offline", down);
     };
-  }, []);
+  }, [userId]);
   const s = useSession(),
     navigate = useNavigate(),
     location = useLocation(),
