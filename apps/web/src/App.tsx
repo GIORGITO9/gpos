@@ -185,6 +185,46 @@ export default function App() {
     </Routes>
   );
 }
+// Un solo input real (autocompletar del SMS/correo y pegar funcionan) dibujado como 6 casillas.
+function CodeInput({ onError }: { onError: () => void }) {
+  const [code, setCode] = useState("");
+  return (
+    <label className="code-input">
+      <span className="sr-only">Código de verificación de 6 dígitos</span>
+      <input
+        name="code"
+        value={code}
+        onChange={(e) => {
+          const next = e.target.value.replace(/\D/g, "").slice(0, 6);
+          setCode(next);
+          onError();
+          // Con el sexto dígito se envía solo, como en iOS.
+          // Tras el render, para que el formulario lea el valor ya limpio.
+          const form = e.target.form;
+          if (next.length === 6) setTimeout(() => form?.requestSubmit());
+        }}
+        inputMode="numeric"
+        autoComplete="one-time-code"
+        pattern="\d{6}"
+        maxLength={6}
+        required
+        autoFocus
+      />
+      <span className="code-boxes" aria-hidden="true">
+        {Array.from({ length: 6 }, (_, i) => (
+          <span
+            key={i}
+            className={
+              i === Math.min(code.length, 5) ? "code-box active" : "code-box"
+            }
+          >
+            {code[i]}
+          </span>
+        ))}
+      </span>
+    </label>
+  );
+}
 function Auth({ register = false }: any) {
   const s = useSession(),
     navigate = useNavigate(),
@@ -200,6 +240,8 @@ function Auth({ register = false }: any) {
     email: string;
     minutes: number;
   } | null>(null);
+  // Cambia tras cada código fallido para vaciar las casillas.
+  const [attempt, setAttempt] = useState(0);
   async function enter(data: any) {
     await qc.cancelQueries();
     qc.clear();
@@ -216,7 +258,7 @@ function Auth({ register = false }: any) {
   }
   async function verify(e: any) {
     e.preventDefault();
-    if (!challenge) return;
+    if (!challenge || pending) return;
     setPending(true);
     setError("");
     try {
@@ -228,6 +270,7 @@ function Auth({ register = false }: any) {
       await enter(j.data);
     } catch (e: any) {
       setError(e.message);
+      setAttempt((n) => n + 1);
       if (/venció|Demasiados/.test(e.message)) setChallenge(null);
     } finally {
       setPending(false);
@@ -269,16 +312,7 @@ function Auth({ register = false }: any) {
             Enviamos un código de 6 dígitos a <strong>{challenge.email}</strong>
             . Vence en {challenge.minutes} minutos.
           </p>
-          <Field
-            label="Código de verificación"
-            name="code"
-            inputMode="numeric"
-            autoComplete="one-time-code"
-            pattern="\d{6}"
-            maxLength={6}
-            required
-            autoFocus
-          />
+          <CodeInput key={attempt} onError={() => setError("")} />
           <small>Este dispositivo no volverá a pedir código.</small>
           {error && (
             <p className="form-error" role="alert">
@@ -325,6 +359,7 @@ function Auth({ register = false }: any) {
           name="email"
           type="email"
           autoComplete="email"
+          maxLength={191}
           required
         />
         <Field
@@ -332,6 +367,7 @@ function Auth({ register = false }: any) {
           name="password"
           type="password"
           minLength={register ? 10 : 1}
+          maxLength={register ? 72 : 128}
           autoComplete={register ? "new-password" : "current-password"}
           required
         />

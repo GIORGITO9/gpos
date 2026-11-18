@@ -4211,3 +4211,60 @@ body:has(.admin-layout .modal) .toast[role="status"] {
 .link-button:hover {
   text-decoration: underline;
 }
+/* Código de verificación: un input transparente sobre 6 casillas. */
+.code-input {
+  position: relative;
+  display: block;
+  margin: 8px 0 14px;
+}
+.code-input input {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  opacity: 0;
+  border: 0;
+  font-size: 16px;
+  caret-color: transparent;
+}
+.code-boxes {
+  display: grid;
+  grid-template-columns: repeat(6, 1fr);
+  gap: 8px;
+}
+.code-box {
+  display: grid;
+  place-items: center;
+  aspect-ratio: 5 / 6;
+  max-height: 64px;
+  border: 1px solid var(--control-border);
+  border-radius: var(--control-radius);
+  background: var(--surface);
+  font-size: var(--text-heading);
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  color: var(--graphite);
+  transition:
+    border-color var(--motion-feedback) ease-out,
+    box-shadow var(--motion-feedback) ease-out;
+}
+.code-input:focus-within .code-box.active {
+  border-color: var(--focus-ring);
+  box-shadow: 0 0 0 4px color-mix(in srgb, var(--focus-ring) 14%, transparent);
+}
+.code-input:focus-within .code-box.active:empty::after {
+  content: "";
+  width: 2px;
+  height: 40%;
+  background: var(--blue);
+  animation: code-caret 1s steps(1) infinite;
+}
+@keyframes code-caret {
+  50% {
+    opacity: 0;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .code-input:focus-within .code-box.active:empty::after {
+    animation: none;
+  }
+}
