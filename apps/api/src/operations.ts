@@ -1911,6 +1911,11 @@ export async function cashAction(
       .parse(body);
     const permission = b.type === "INGRESO" ? "caja.ingreso" : "caja.retirar";
     if (!allowed(u.permissions, permission)) throw new ForbiddenException();
+    // Un retiro o gasto sale del efectivo físico: no puede dejar la caja en negativo.
+    if (b.type !== "INGRESO" && b.amount > cashExpected(s.opening, s.movements))
+      throw new BadRequestException(
+        `No hay suficiente efectivo en caja. Disponible: $ ${cashExpected(s.opening, s.movements).toLocaleString("es-CO")}`,
+      );
     const row = await tx.cashMovement.create({
       data: {
         sessionId: s.id,

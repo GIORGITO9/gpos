@@ -4445,3 +4445,44 @@ body:has(.admin-layout .modal) .toast[role="status"] {
 .admin-company-action {
   text-align: right;
 }
+/* Cierre de turno: cobros por medio y diferencia en vivo. */
+.cash-close-summary {
+  display: grid;
+  gap: 2px;
+  margin: 0 0 16px;
+  padding: 6px 14px;
+  border-radius: var(--radius-feedback);
+  background: var(--porcelain);
+}
+.cash-close-summary > div {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 6px 0;
+}
+.cash-close-summary dt {
+  color: var(--muted-strong);
+}
+.cash-close-summary dd {
+  margin: 0;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+.cash-difference {
+  margin: -4px 0 12px;
+  padding: 10px 14px;
+  border-radius: var(--radius-feedback);
+  font-weight: 600;
+}
+.cash-difference.even {
+  background: var(--ready-bg);
+  color: var(--ready-text);
+}
+.cash-difference.over {
+  background: var(--confirmed-bg);
+  color: var(--confirmed-text);
+}
+.cash-difference.short {
+  background: var(--cancelled-bg);
+  color: var(--cancelled-text);
+}
