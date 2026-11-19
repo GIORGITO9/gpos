@@ -15,6 +15,8 @@ import {
   Download,
   ChevronRight,
   MessageSquare,
+  ShieldCheck,
+  UtensilsCrossed,
 } from "lucide-react";
 import { api, get, useSession, money, labels } from "./api";
 import {
@@ -105,8 +107,22 @@ type Activity = {
   createdAt: string;
 };
 type Filters = Partial<
-  Record<"search" | "status" | "planId" | "renewal" | "companyStatus", string>
+  Record<
+    | "search"
+    | "status"
+    | "planId"
+    | "renewal"
+    | "companyStatus"
+    | "businessType",
+    string
+  >
 >;
+const businessLabel = (c: Pick<Company, "businessType" | "usesTables">) =>
+  c.businessType === "TIENDA"
+    ? c.usesTables
+      ? "Tienda · con mesas"
+      : "Tienda"
+    : "Restaurante";
 type PageData = { total: number; pageSize: number };
 function listPath(
   path: string,
@@ -175,6 +191,7 @@ const planLimits = [
 ] as const;
 
 export default function Admin() {
+  const me = useSession((s) => s.user);
   const q = useQuery({
       queryKey: ["admin", "overview"],
       queryFn: () => get("admin/overview"),
@@ -182,6 +199,9 @@ export default function Admin() {
     qc = useQueryClient(),
     toast = useToast();
   const [editing, setEditing] = useState<Company | null>(null);
+  // Las mesas opcionales solo aplican a tiendas: la casilla aparece al elegir Tienda.
+  const [editType, setEditType] = useState("");
+  useEffect(() => setEditType(editing?.businessType ?? ""), [editing]);
   const [plan, setPlan] = useState<PlatformPlan | null>(null);
   const [busy, setBusy] = useState(false);
   const [formError, setFormError] = useState("");
@@ -336,8 +356,17 @@ export default function Admin() {
     <main className="admin-layout">
       <header className="admin-header">
         <Link className="brand" to="/">
-          gpos<span className="brand-dot">.</span>
+          <span className="brand-icon">
+            <UtensilsCrossed size={20} />
+          </span>
+          <span>
+            gpos<span className="brand-dot">.</span>
+          </span>
         </Link>
+        <span className="admin-role">
+          <ShieldCheck size={15} aria-hidden="true" /> Super Admin
+        </span>
+        <span className="admin-who">{me?.email}</span>
 
         <Button
           onClick={async () => {
@@ -427,6 +456,40 @@ export default function Admin() {
                     </button>
                   </div>
                 </section>
+                <section className="panel" aria-labelledby="type-heading">
+                  <div className="panel-title">
+                    <h2 id="type-heading">Por tipo de negocio</h2>
+                  </div>
+                  <div className="admin-summary-list">
+                    {(
+                      [
+                        [
+                          "RESTAURANTE",
+                          "Restaurantes",
+                          "Mesas, cocina y recetas",
+                        ],
+                        [
+                          "TIENDA",
+                          "Tiendas",
+                          "Mostrador e inventario por producto",
+                        ],
+                      ] as const
+                    ).map(([type, title, detail]) => (
+                      <button
+                        type="button"
+                        key={type}
+                        onClick={() => openCompanies({ businessType: type })}
+                      >
+                        <span>
+                          <strong>{title}</strong>
+                          <small>{detail}</small>
+                        </span>
+                        <b>{q.data.businessTypes?.[type] ?? 0}</b>
+                        <ChevronRight size={17} />
+                      </button>
+                    ))}
+                  </div>
+                </section>
                 <section className="panel" aria-labelledby="status-heading">
                   <div className="panel-title">
                     <h2 id="status-heading">Suscripciones por estado</h2>
@@ -465,6 +528,7 @@ export default function Admin() {
                     exportCsv(
                       companies.map((company) => ({
                         Empresa: company.name,
+                        Tipo: businessLabel(company),
                         Correo: company.email ?? "",
                         Ciudad: company.city,
                         Plan: company.subscription?.plan.name ?? "",
@@ -496,6 +560,19 @@ export default function Admin() {
                     value={filters.search ?? ""}
                     onChange={(e) => updateFilter("search", e.target.value)}
                   />
+                </Field>
+                <Field label="Tipo de negocio">
+                  <select
+                    aria-label="Tipo de negocio"
+                    value={filters.businessType ?? ""}
+                    onChange={(e) =>
+                      updateFilter("businessType", e.target.value)
+                    }
+                  >
+                    <option value="">Todos</option>
+                    <option value="RESTAURANTE">Restaurante</option>
+                    <option value="TIENDA">Tienda</option>
+                  </select>
                 </Field>
                 <Field label="Suscripción">
                   <select
@@ -581,6 +658,16 @@ export default function Admin() {
                         <tr key={company.id} role="row">
                           <td role="cell" className="admin-company-name">
                             <strong>{company.name}</strong>
+                            <span
+                              className={
+                                "admin-type " +
+                                (company.businessType === "TIENDA"
+                                  ? "store"
+                                  : "restaurant")
+                              }
+                            >
+                              {businessLabel(company)}
+                            </span>
                             <small>
                               {[company.city, company.email]
                                 .filter(Boolean)
@@ -717,6 +804,7 @@ export default function Admin() {
               <div className="panel-title">
                 <h2>Historial de cambios</h2>
                 <select
+                  className="admin-inline-select"
                   aria-label="Filtrar historial por módulo"
                   value={activityModule}
                   onChange={(e) => {
@@ -834,19 +922,25 @@ export default function Admin() {
                 </select>
               </Field>
               <Field label="Tipo de negocio (cambia menús y punto de venta)">
-                <select name="businessType" defaultValue={editing.businessType}>
+                <select
+                  name="businessType"
+                  defaultValue={editing.businessType}
+                  onChange={(e) => setEditType(e.target.value)}
+                >
                   <option value="RESTAURANTE">Restaurante</option>
                   <option value="TIENDA">Tienda (productos o servicios)</option>
                 </select>
               </Field>
-              <label className="checkbox-row">
-                <input
-                  type="checkbox"
-                  name="usesTables"
-                  defaultChecked={editing.usesTables}
-                />
-                La tienda usa mesas (solo aplica a tiendas)
-              </label>
+              {editType === "TIENDA" && (
+                <label className="checkbox-row">
+                  <input
+                    type="checkbox"
+                    name="usesTables"
+                    defaultChecked={editing.usesTables}
+                  />
+                  Esta tienda también atiende en mesas
+                </label>
+              )}
               <Field label="Suscripción">
                 <select
                   name="subscriptionStatus"
