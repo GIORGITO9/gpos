@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
@@ -43,6 +43,7 @@ import {
   usesTables,
   stockItem,
   unitLabel,
+  serviceLabel,
 } from "./api";
 import {
   PageTitle,
@@ -856,6 +857,17 @@ export function Cash() {
   const toast = useToast(),
     qc = useQueryClient();
   const current = q.data?.find((c: any) => c.userId === s.user.id);
+  const [counted, setCounted] = useState("");
+  // Cobros netos del turno por medio de pago (ventas menos devoluciones), para cuadrar cada uno.
+  const byMethod = Object.entries(
+    (current?.movements ?? [])
+      .filter((m: any) => ["VENTA", "DEVOLUCION"].includes(m.type))
+      .reduce((acc: Record<string, number>, m: any) => {
+        acc[m.method] = (acc[m.method] ?? 0) + m.amount;
+        return acc;
+      }, {}),
+  ).sort((a: any, b: any) => b[1] - a[1]) as [string, number][];
+  const netSales = byMethod.reduce((n, [, v]) => n + v, 0);
   async function submit(e: any) {
     e.preventDefault();
     const data: any = Object.fromEntries(new FormData(e.currentTarget));
@@ -867,6 +879,7 @@ export function Cash() {
       const j = await api("cash/" + modal, data);
       qc.invalidateQueries();
       setModal("");
+      setCounted("");
       toast(
         modal === "close"
           ? `Caja cerrada. Diferencia: ${money(j.data.difference)}`
@@ -913,16 +926,40 @@ export function Cash() {
               icon={ReceiptText}
             />
             <Metric
-              label="Ventas del turno"
-              value={money(
-                current?.movements
-                  .filter((m: any) => m.type === "VENTA")
-                  .reduce((n: number, m: any) => n + m.amount, 0),
-              )}
-              detail="Todos los medios de pago"
+              label="Ventas netas del turno"
+              value={money(netSales)}
+              detail="Todos los medios, menos devoluciones"
               icon={ShoppingCart}
             />
           </div>
+          {byMethod.length > 0 && (
+            <section className="panel">
+              <div className="panel-title">
+                <div>
+                  <h2>Cobros por medio de pago</h2>
+                  <p>Cuadra cada medio con el datáfono, Nequi o el banco.</p>
+                </div>
+              </div>
+              <div className="report-breakdown">
+                {byMethod.map(([method, value]) => (
+                  <div key={method}>
+                    <span>{labels[method] ?? method}</span>
+                    <div className="report-track">
+                      <i
+                        style={{
+                          width:
+                            (netSales > 0
+                              ? Math.max(0, (value / netSales) * 100)
+                              : 0) + "%",
+                        }}
+                      />
+                    </div>
+                    <strong>{money(value)}</strong>
+                  </div>
+                ))}
+              </div>
+            </section>
+          )}
           <section className="panel">
             <div className="panel-title">
               <h2>Movimientos de mi turno</h2>
@@ -1018,7 +1055,10 @@ export function Cash() {
                 ? "Cerrar mi turno"
                 : "Nuevo movimiento"
           }
-          onClose={() => setModal("")}
+          onClose={() => {
+            setModal("");
+            setCounted("");
+          }}
         >
           <form onSubmit={submit}>
             {modal === "open" ? (
@@ -1042,16 +1082,50 @@ export function Cash() {
               </>
             ) : modal === "close" ? (
               <>
+                {byMethod.length > 0 && (
+                  <dl className="cash-close-summary">
+                    {byMethod.map(([method, value]) => (
+                      <div key={method}>
+                        <dt>{labels[method] ?? method}</dt>
+                        <dd>{money(value)}</dd>
+                      </div>
+                    ))}
+                  </dl>
+                )}
                 <p>
-                  Efectivo esperado: <strong>{money(current.expected)}</strong>
+                  Efectivo esperado en caja:{" "}
+                  <strong>{money(current.expected)}</strong>
                 </p>
                 <Field
                   label="Efectivo contado"
                   name="counted"
                   type="number"
                   min="0"
+                  inputMode="numeric"
+                  value={counted}
+                  onChange={(e: any) => setCounted(e.target.value)}
                   required
+                  autoFocus
                 />
+                {counted !== "" && (
+                  <p
+                    className={
+                      "cash-difference " +
+                      (Number(counted) === current.expected
+                        ? "even"
+                        : Number(counted) > current.expected
+                          ? "over"
+                          : "short")
+                    }
+                    role="status"
+                  >
+                    {Number(counted) === current.expected
+                      ? "La caja cuadra exacto."
+                      : Number(counted) > current.expected
+                        ? `Sobran ${money(Number(counted) - current.expected)}`
+                        : `Faltan ${money(current.expected - Number(counted))}`}
+                  </p>
+                )}
                 <p className="muted">
                   El cierre guarda la diferencia y finaliza este turno.
                 </p>
@@ -1590,6 +1664,47 @@ export function Reports() {
     queryFn: () => get(`reports/sales?from=${from}&to=${to}&scope=${scope}`),
   });
   const d = q.data;
+  const paidDay = (iso: string) => bogotaDate.format(new Date(iso));
+  // Ventas por día (o por mes si el período supera dos meses), con los días sin ventas en cero.
+  const trend = useMemo(() => {
+    if (!d) return [];
+    const monthly = Date.parse(to) - Date.parse(from) > 62 * 86400000;
+    const key = (day: string) => (monthly ? day.slice(0, 7) : day);
+    const totals: Record<string, number> = {};
+    for (const o of d.orders)
+      if (o.paidAt)
+        totals[key(paidDay(o.paidAt))] =
+          (totals[key(paidDay(o.paidAt))] ?? 0) + o.total;
+    const out: { key: string; label: string; total: number }[] = [];
+    const cursor = new Date(from + "T12:00:00-05:00");
+    const end = new Date(to + "T12:00:00-05:00");
+    while (cursor <= end) {
+      const k = key(bogotaDate.format(cursor));
+      if (!out.length || out.at(-1)!.key !== k)
+        out.push({
+          key: k,
+          label: monthly
+            ? new Intl.DateTimeFormat("es-CO", {
+                month: "short",
+                timeZone: "America/Bogota",
+              }).format(cursor)
+            : String(Number(k.slice(8))),
+          total: totals[k] ?? 0,
+        });
+      cursor.setDate(cursor.getDate() + 1);
+    }
+    return out;
+  }, [d, from, to]);
+  const trendMax = Math.max(1, ...trend.map((t) => t.total));
+  // Restaurante: mesa, domicilio, recoger, llevar. Tienda: mostrador y domicilio.
+  const services = useMemo(() => {
+    const out: Record<string, number> = {};
+    for (const o of d?.orders ?? []) {
+      const label = serviceLabel(s.user, o.service);
+      out[label] = (out[label] ?? 0) + o.total;
+    }
+    return out;
+  }, [d, s.user]);
   async function excel() {
     const ExcelJS = await import("exceljs");
     const w = new ExcelJS.Workbook(),
@@ -1600,7 +1715,13 @@ export function Reports() {
       { header: "Total", key: "total", width: 18 },
       { header: "Servicio", key: "service", width: 20 },
     ];
-    sheet.addRows(d.orders);
+    sheet.addRows(
+      d.orders.map((o: any) => ({
+        ...o,
+        paidAt: o.paidAt ? date(o.paidAt) : "",
+        service: serviceLabel(s.user, o.service),
+      })),
+    );
     sheet.getRow(1).font = { bold: true };
     const blob = new Blob([await w.xlsx.writeBuffer()], {
         type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
@@ -1633,9 +1754,9 @@ export function Reports() {
                 exportCsv(
                   d.orders.map((o: any) => ({
                     pedido: o.number,
-                    fecha: o.paidAt,
+                    fecha: o.paidAt ? date(o.paidAt) : "",
                     total: o.total,
-                    servicio: o.service,
+                    servicio: serviceLabel(s.user, o.service),
                     usuario: o.user.name,
                   })),
                   "ventas",
@@ -1696,9 +1817,50 @@ export function Reports() {
               detail="Por venta cobrada"
             />
           </div>
+          {d.count > 0 && (
+            <section className="panel sales-panel">
+              <div className="panel-title">
+                <div>
+                  <h2>Ventas en el período</h2>
+                  <p>
+                    {trend.length && trend[0].key.length === 7
+                      ? "Ventas cobradas por mes"
+                      : "Ventas cobradas por día"}
+                  </p>
+                </div>
+              </div>
+              <div className="chart">
+                <div className="chart-labels">
+                  <span>{money(trendMax)}</span>
+                  <span>{money(Math.round(trendMax / 2))}</span>
+                  <span>$0</span>
+                </div>
+                <div className="chart-bars">
+                  {trend.map((t, i) => (
+                    <div key={t.key} className="chart-bar-cell">
+                      <div
+                        className={"chart-bar " + (t.total ? "has-value" : "")}
+                        style={{
+                          height: Math.max(2, (t.total / trendMax) * 100) + "%",
+                        }}
+                        title={`${t.key} · ${money(t.total)}`}
+                      />
+                      <span>
+                        {trend.length <= 16 ||
+                        i % Math.ceil(trend.length / 12) === 0
+                          ? t.label
+                          : ""}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </section>
+          )}
           <div className="tabs">
             {[
               ["products", "Productos"],
+              ["services", "Por servicio"],
               ["payments", "Medios de pago"],
               ["employees", "Por usuario"],
               ["customers", "Por cliente"],
@@ -1744,19 +1906,22 @@ export function Reports() {
               </TableScroll>
             ) : (
               <div className="report-breakdown">
-                {Object.entries(d[tab]).map(([name, value]: any) => (
-                  <div key={name}>
-                    <span>{labels[name] || name}</span>
-                    <div className="report-track">
-                      <i
-                        style={{
-                          width: (d.gross ? (value / d.gross) * 100 : 0) + "%",
-                        }}
-                      />
+                {Object.entries(tab === "services" ? services : d[tab])
+                  .sort((a: any, b: any) => b[1] - a[1])
+                  .map(([name, value]: any) => (
+                    <div key={name}>
+                      <span>{labels[name] || name}</span>
+                      <div className="report-track">
+                        <i
+                          style={{
+                            width:
+                              (d.gross ? (value / d.gross) * 100 : 0) + "%",
+                          }}
+                        />
+                      </div>
+                      <strong>{money(value)}</strong>
                     </div>
-                    <strong>{money(value)}</strong>
-                  </div>
-                ))}
+                  ))}
               </div>
             )}
             {!d.count && (
