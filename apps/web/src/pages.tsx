@@ -29,6 +29,8 @@ import {
   RefreshCw,
   CalendarDays,
   PackageCheck,
+  PackageX,
+  TriangleAlert,
 } from "lucide-react";
 import {
   api,
@@ -1169,9 +1171,34 @@ export function Inventory() {
   const store = isStore(s.user),
     item = stockItem(s.user);
   const [modal, setModal] = useState(false),
-    [busy, setBusy] = useState(false);
+    [busy, setBusy] = useState(false),
+    [search, setSearch] = useState("");
   const toast = useToast(),
     qc = useQueryClient();
+  // Agotados primero, luego stock bajo: lo urgente arriba.
+  const stock = useMemo(
+    () =>
+      (q.data ?? [])
+        .map((i: any) => {
+          const qty = i.inventory[0]?.quantity || 0;
+          return {
+            ...i,
+            qty,
+            level: qty <= 0 ? 0 : qty <= i.minimum ? 1 : 2,
+          };
+        })
+        .sort(
+          (a: any, b: any) => a.level - b.level || a.name.localeCompare(b.name),
+        ),
+    [q.data],
+  );
+  const shown = stock.filter((i: any) =>
+    i.name.toLowerCase().includes(search.trim().toLowerCase()),
+  );
+  const stockValue = stock.reduce(
+    (n: number, i: any) => n + Math.max(0, i.qty) * i.cost,
+    0,
+  );
   async function submit(e: any) {
     e.preventDefault();
     const body: any = Object.fromEntries(new FormData(e.currentTarget));
@@ -1220,69 +1247,110 @@ export function Inventory() {
       ) : q.error ? (
         <ErrorBox error={q.error} />
       ) : (
-        <div className="panel">
-          <div className="panel-title">
-            <h2>Existencias por {item.toLowerCase()}</h2>
-            <span className="muted">Sucursal actual</span>
-          </div>
-          {q.data?.length ? (
-            <TableScroll>
-              <table>
-                <thead>
-                  <tr>
-                    <th>{item}</th>
-                    <th>Disponible</th>
-                    <th>Mínimo</th>
-                    <th>Costo unitario</th>
-                    <th>Estado</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {q.data.map((i: any) => {
-                    const qty = i.inventory[0]?.quantity || 0;
-                    return (
-                      <tr key={i.id}>
-                        <td>
-                          <strong>{i.name}</strong>
-                        </td>
-                        <td>
-                          {qty.toLocaleString("es-CO")} {unitLabel(qty, i.unit)}
-                        </td>
-                        <td>
-                          {i.minimum} {unitLabel(i.minimum, i.unit)}
-                        </td>
-                        <td>{money(i.cost)}</td>
-                        <td>
-                          <span
-                            className={
-                              "badge " +
-                              (qty <= i.minimum ? "PENDIENTE" : "ACTIVA")
-                            }
-                          >
-                            {qty <= i.minimum ? "Stock bajo" : "Disponible"}
-                          </span>
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </TableScroll>
-          ) : (
-            <Empty
-              title={
-                store
-                  ? "Sin productos con inventario"
-                  : "Agrega tus ingredientes"
-              }
-              text={
-                store
-                  ? "Activa “Controlar inventario” en un producto para ver sus existencias aquí."
-                  : "Después podrás registrar existencias y crear recetas."
-              }
-            />
+        <>
+          {stock.length > 0 && (
+            <div className="metrics three">
+              <Metric
+                label="Valor del inventario"
+                value={money(Math.round(stockValue))}
+                detail="Existencias × costo unitario"
+                icon={Package}
+              />
+              <Metric
+                label="Stock bajo"
+                value={stock.filter((i: any) => i.level === 1).length}
+                detail="En el mínimo o por debajo"
+                icon={TriangleAlert}
+              />
+              <Metric
+                label="Agotados"
+                value={stock.filter((i: any) => i.level === 0).length}
+                detail={
+                  store
+                    ? "Productos sin unidades"
+                    : "Ingredientes sin existencias"
+                }
+                icon={PackageX}
+              />
+            </div>
           )}
-        </div>
+          <div className="panel">
+            <div className="panel-title">
+              <h2>Existencias por {item.toLowerCase()}</h2>
+              <span className="muted">Sucursal actual</span>
+            </div>
+            {stock.length > 5 && (
+              <div className="table-toolbar">
+                <SearchInput
+                  value={search}
+                  onChange={setSearch}
+                  placeholder={`Buscar ${item.toLowerCase()}…`}
+                />
+              </div>
+            )}
+            {q.data?.length ? (
+              <TableScroll>
+                <table>
+                  <thead>
+                    <tr>
+                      <th>{item}</th>
+                      <th>Disponible</th>
+                      <th>Mínimo</th>
+                      <th>Costo unitario</th>
+                      <th>Estado</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {shown.map((i: any) => {
+                      const qty = i.qty;
+                      return (
+                        <tr key={i.id}>
+                          <td>
+                            <strong>{i.name}</strong>
+                          </td>
+                          <td>
+                            {qty.toLocaleString("es-CO")}{" "}
+                            {unitLabel(qty, i.unit)}
+                          </td>
+                          <td>
+                            {i.minimum} {unitLabel(i.minimum, i.unit)}
+                          </td>
+                          <td>{money(i.cost)}</td>
+                          <td>
+                            <span
+                              className={
+                                "badge " +
+                                ["CANCELADO", "PENDIENTE", "ACTIVA"][i.level]
+                              }
+                            >
+                              {["Agotado", "Stock bajo", "Disponible"][i.level]}
+                            </span>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </TableScroll>
+            ) : (
+              <Empty
+                title={
+                  store
+                    ? "Sin productos con inventario"
+                    : "Agrega tus ingredientes"
+                }
+                text={
+                  store
+                    ? "Activa “Controlar inventario” en un producto para ver sus existencias aquí."
+                    : "Después podrás registrar existencias y crear recetas."
+                }
+              />
+            )}
+            {stock.length > 0 && !shown.length && (
+              <Empty title="Sin resultados" text="Prueba con otro nombre." />
+            )}
+          </div>
+        </>
       )}
       <section className="panel">
         <div className="panel-title">
@@ -1572,7 +1640,19 @@ export function Purchases() {
                     onChange={(e) =>
                       setItems((v) =>
                         v.map((x, n) =>
-                          n === i ? { ...x, ingredientId: e.target.value } : x,
+                          n === i
+                            ? {
+                                ...x,
+                                ingredientId: e.target.value,
+                                // Propone el último costo conocido; se puede corregir.
+                                cost:
+                                  x.cost ||
+                                  ingredients.data?.find(
+                                    (g: any) => g.id === e.target.value,
+                                  )?.cost ||
+                                  0,
+                              }
+                            : x,
                         ),
                       )
                     }
@@ -1580,7 +1660,7 @@ export function Purchases() {
                     <option value="">Selecciona</option>
                     {ingredients.data?.map((g: any) => (
                       <option key={g.id} value={g.id}>
-                        {g.name}
+                        {g.name} ({g.unit})
                       </option>
                     ))}
                   </select>

@@ -10,6 +10,7 @@ import {
   createOrder,
   orderState,
   orders,
+  purchaseAction,
 } from "../src/operations";
 
 test(
@@ -147,6 +148,43 @@ test(
       });
       assert.equal(stock.quantity, 3);
 
+      // Compra recibida: suma stock y actualiza el costo del stock y de la gaseosa; no se recibe dos veces.
+      const supplier = await db.supplier.create({
+        data: { tenantId: tenant.id, name: "Proveedor QA" },
+      });
+      const purchase: any = await purchaseAction(
+        undefined,
+        {
+          supplierId: supplier.id,
+          items: [
+            { ingredientId: mirror.ingredientId, quantity: 5, cost: 2500 },
+          ],
+        },
+        u,
+        branchId,
+      );
+      await purchaseAction(purchase.id, {}, u, branchId);
+      await assert.rejects(
+        purchaseAction(purchase.id, {}, u, branchId),
+        /no disponible/,
+      );
+      const restocked = await db.inventory.findFirstOrThrow({
+        where: { branchId, ingredientId: mirror.ingredientId },
+      });
+      assert.equal(restocked.quantity, 8);
+      assert.equal(
+        (
+          await db.ingredient.findUniqueOrThrow({
+            where: { id: mirror.ingredientId },
+          })
+        ).cost,
+        2500,
+      );
+      assert.equal(
+        (await db.product.findUniqueOrThrow({ where: { id: soda.id } })).cost,
+        2500,
+      );
+
       // La gaseosa sola no genera ticket de cocina.
       assert.equal(sale.rounds.length, 0);
 
@@ -227,6 +265,9 @@ test(
         }),
         db.cashSession.deleteMany({ where: { register: { branchId } } }),
         db.cashRegister.deleteMany({ where: { branchId } }),
+        db.purchaseItem.deleteMany({ where: { purchase: { branchId } } }),
+        db.purchase.deleteMany({ where: { branchId } }),
+        db.supplier.deleteMany({ where: { tenantId: t } }),
         db.inventoryMovement.deleteMany({ where: { branchId } }),
         db.inventory.deleteMany({ where: { branchId } }),
         db.recipeItem.deleteMany({ where: { product: { tenantId: t } } }),

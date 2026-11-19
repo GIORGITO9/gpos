@@ -2036,11 +2036,21 @@ export async function purchaseAction(
     if (id) {
       const p = await tx.purchase.findFirst({
         where: { id, branchId },
-        include: { items: true },
+        include: {
+          items: { include: { ingredient: { select: { name: true } } } },
+          supplier: { select: { name: true } },
+        },
       });
-      if (!p || p.status !== "PENDIENTE")
+      // Solo una recepción pasa de PENDIENTE a RECIBIDA: dos clics simultáneos no duplican el stock.
+      const claimed = p
+        ? await tx.purchase.updateMany({
+            where: { id, branchId, status: "PENDIENTE" },
+            data: { status: "RECIBIDA" },
+          })
+        : { count: 0 };
+      if (!p || !claimed.count)
         throw new BadRequestException("Compra no disponible para recepción");
-      for (const item of p.items)
+      for (const item of p.items) {
         await stockMove(
           tx,
           u,
@@ -2048,14 +2058,28 @@ export async function purchaseAction(
           item.ingredientId,
           item.quantity,
           "ENTRADA",
-          `Compra ${p.id}`,
+          `Compra a ${p.supplier.name}`,
         );
-      const row = await tx.purchase.update({
-        where: { id },
-        data: { status: "RECIBIDA" },
-      });
+        // Último costo de compra: inventario y márgenes reflejan lo que cuesta hoy.
+        await tx.ingredient.update({
+          where: { id: item.ingredientId },
+          data: { cost: item.cost },
+        });
+        // Producto que se vende tal cual (stock 1:1 con su mismo nombre): su costo sigue al de la compra.
+        await tx.product.updateMany({
+          where: {
+            tenantId: u.tenantId,
+            name: item.ingredient.name,
+            recipe: {
+              some: { ingredientId: item.ingredientId, quantity: 1 },
+              every: { ingredientId: item.ingredientId, quantity: 1 },
+            },
+          },
+          data: { cost: item.cost },
+        });
+      }
       await audit(tx, u, "UPDATE", "purchases", id);
-      return row;
+      return tx.purchase.findUniqueOrThrow({ where: { id } });
     }
     const b = z
       .object({
