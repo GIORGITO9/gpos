@@ -2345,8 +2345,12 @@ legend {
     grid-template-columns: repeat(2, 1fr);
     gap: 12px;
   }
+  /* Tienda (3 métricas): ventas a todo el ancho y las otras dos lado a lado. */
   .metrics.three {
-    grid-template-columns: 1fr;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .metrics.three > :first-child {
+    grid-column: 1 / -1;
   }
   .metric {
     padding: 18px;
@@ -4266,5 +4270,79 @@ body:has(.admin-layout .modal) .toast[role="status"] {
 @media (prefers-reduced-motion: reduce) {
   .code-input:focus-within .code-box.active:empty::after {
     animation: none;
+  }
+}
+/* Celular: cada fila de tabla es una tarjeta con etiqueta por dato, sin desplazamiento lateral. */
+@media screen and (max-width: 640px) {
+  .table-scroll table,
+  .table-scroll tbody,
+  .table-scroll tr,
+  .table-scroll td {
+    display: block;
+    width: 100%;
+  }
+  .table-scroll table {
+    white-space: normal;
+  }
+  .table-scroll thead {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+  }
+  .table-hint {
+    display: none;
+  }
+  .table-scroll tbody tr {
+    position: relative;
+    padding: 8px 0;
+    border-bottom: 1px solid var(--line);
+  }
+  .table-scroll tbody tr:last-child {
+    border-bottom: 0;
+  }
+  .table-scroll td {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+    min-height: 30px;
+    padding: 3px 17px;
+    border: 0;
+    text-align: right;
+  }
+  .table-scroll td::before {
+    content: attr(data-label);
+    flex-shrink: 0;
+    color: var(--muted);
+    font-size: var(--text-micro);
+    text-align: left;
+  }
+  .table-scroll td:not([data-label]) {
+    justify-content: flex-end;
+  }
+  .table-scroll td:not([data-label])::before {
+    content: none;
+  }
+  /* El primer dato (número de pedido, nombre) es el título; las acciones van arriba a la derecha. */
+  .table-scroll td:first-child {
+    justify-content: flex-start;
+    min-height: 44px;
+    padding-right: 110px;
+    font-size: var(--text-control);
+    font-weight: 600;
+    color: var(--graphite);
+    text-align: left;
+  }
+  .table-scroll td:first-child::before {
+    content: none;
+  }
+  .table-scroll td:last-child:not([data-label]):not(:first-child) {
+    position: absolute;
+    top: 8px;
+    right: 0;
+    width: auto;
+    min-height: 44px;
   }
 }

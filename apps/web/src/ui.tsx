@@ -161,7 +161,29 @@ export function TableScroll({ children }: { children: ReactNode }) {
     if (viewport.firstElementChild)
       observer.observe(viewport.firstElementChild);
     measure();
-    return () => observer.disconnect();
+    // En el celular cada fila se muestra como tarjeta: cada celda lleva el nombre de su columna.
+    const label = () => {
+      const table = viewport.querySelector("table");
+      if (!table) return;
+      const heads = [...table.querySelectorAll("thead th")].map(
+        (th) => th.textContent?.trim() ?? "",
+      );
+      table.querySelectorAll("tbody tr").forEach((tr) =>
+        [...tr.children].forEach((cell, i) => {
+          const head =
+            (cell as HTMLTableCellElement).colSpan > 1 ? "" : heads[i];
+          if (head) cell.setAttribute("data-label", head);
+          else cell.removeAttribute("data-label");
+        }),
+      );
+    };
+    const rows = new MutationObserver(label);
+    rows.observe(viewport, { childList: true, subtree: true });
+    label();
+    return () => {
+      observer.disconnect();
+      rows.disconnect();
+    };
   }, []);
   return (
     <div className="table-frame">
