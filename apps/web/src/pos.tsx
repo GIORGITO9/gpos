@@ -786,18 +786,22 @@ function OrderComposer({
               </button>
             ))}
           </div>
-          <label className="field pos-stock-filter">
-            <span>Disponibilidad</span>
-            <select
-              value={stockFilter}
-              onChange={(event) => setStockFilter(event.target.value)}
-            >
-              <option value="">Todos los estados</option>
-              <option value="alerts">Pocas unidades o agotados</option>
-              <option value="low">Pocas unidades</option>
-              <option value="sold-out">Agotados</option>
-            </select>
-          </label>
+          {/* Solo si algo controla inventario: un menú sin stock no necesita este filtro. */}
+          {(stockFilter ||
+            (products.data ?? []).some((p: any) => p.trackStock)) && (
+            <label className="field pos-stock-filter">
+              <span className="sr-only">Disponibilidad</span>
+              <select
+                value={stockFilter}
+                onChange={(event) => setStockFilter(event.target.value)}
+              >
+                <option value="">Toda la disponibilidad</option>
+                <option value="alerts">Pocas unidades o agotados</option>
+                <option value="low">Pocas unidades</option>
+                <option value="sold-out">Agotados</option>
+              </select>
+            </label>
+          )}
           {products.isLoading ? (
             <Loading />
           ) : products.error ? (

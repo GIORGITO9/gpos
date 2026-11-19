@@ -1,4 +1,4 @@
-import { useState, type ComponentType } from "react";
+import { useEffect, useState, type ComponentType } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { api, money } from "./api";
 import { Link } from "react-router-dom";
@@ -15,6 +15,10 @@ import {
   RotateCcw,
   Mail,
   Monitor,
+  ShieldCheck,
+  Smartphone,
+  Sparkles,
+  WifiOff,
   ScanBarcode,
   Store,
   Tag,
@@ -505,7 +509,68 @@ function FeatureExplorer() {
   );
 }
 
+// Lo que GPOS hace de verdad, en tarjetas de distinto tamaño.
+const highlights = [
+  {
+    icon: WifiOff,
+    tone: "blue",
+    wide: true,
+    title: "Sigue vendiendo sin internet.",
+    copy: "Si se cae la conexión, el pedido se guarda en el equipo y llega a cocina apenas vuelve. Sin duplicados.",
+  },
+  {
+    icon: ChefHat,
+    tone: "orange",
+    title: "Cocina en vivo.",
+    copy: "Cada comanda aparece sola y avanza por estación, de nuevo a entregado.",
+  },
+  {
+    icon: Package,
+    tone: "green",
+    title: "Inventario que avisa.",
+    copy: "Descuenta recetas o unidades al cobrar y te alerta antes de que se agote.",
+  },
+  {
+    icon: ShieldCheck,
+    tone: "violet",
+    title: "Tu cuenta, protegida.",
+    copy: "Cada dispositivo nuevo se autoriza con un código que llega a tu correo.",
+  },
+  {
+    icon: Smartphone,
+    tone: "pink",
+    title: "En cualquier pantalla.",
+    copy: "Computador, tablet o celular, desde el navegador. Sin instalar nada.",
+  },
+] as const;
+
+// Aparición suave al hacer scroll; con movimiento reducido todo se muestra de una vez.
+function useReveal() {
+  useEffect(() => {
+    const items = document.querySelectorAll(".reveal");
+    if (
+      !("IntersectionObserver" in window) ||
+      matchMedia("(prefers-reduced-motion: reduce)").matches
+    ) {
+      items.forEach((el) => el.classList.add("is-visible"));
+      return;
+    }
+    const io = new IntersectionObserver(
+      (entries) =>
+        entries.forEach((entry) => {
+          if (!entry.isIntersecting) return;
+          entry.target.classList.add("is-visible");
+          io.unobserve(entry.target);
+        }),
+      { rootMargin: "0px 0px -8% 0px" },
+    );
+    items.forEach((el) => io.observe(el));
+    return () => io.disconnect();
+  }, []);
+}
+
 export function Landing({ Brand }: { Brand: ComponentType }) {
+  useReveal();
   const offer = useQuery<{ data: PublicPlan[]; trialDays?: number }>({
     queryKey: ["public-plans"],
     queryFn: () => api("plans"),
@@ -532,11 +597,17 @@ export function Landing({ Brand }: { Brand: ComponentType }) {
       </header>
       <main id="landing-main">
         <div className="landing-hero-band">
+          <div className="landing-aurora" aria-hidden="true" />
           <section
             className="landing-shell landing-hero landing-sales-hero"
             aria-labelledby="landing-title"
           >
             <div className="landing-intro">
+              <a className="landing-eyebrow" href="#negocios">
+                <Sparkles size={14} aria-hidden="true" />
+                Nuevo: GPOS para tiendas
+                <ArrowRight size={14} aria-hidden="true" />
+              </a>
               <h1 id="landing-title">
                 Vende, cobra y controla tu stock <span>en un solo POS.</span>
               </h1>
@@ -581,18 +652,54 @@ export function Landing({ Brand }: { Brand: ComponentType }) {
           </section>
         </div>
         <section
+          className="landing-shell landing-highlights"
+          aria-labelledby="highlights-title"
+        >
+          <div className="landing-section-heading reveal">
+            <h2 id="highlights-title">Hecho para la hora pico.</h2>
+            <p>
+              Menos clics en caja, menos errores en cocina y el negocio en orden
+              aunque falle el internet.
+            </p>
+          </div>
+          <div className="landing-bento">
+            {highlights.map(({ icon: Icon, tone, title, copy, ...rest }) => (
+              <article
+                key={title}
+                className={`landing-bento-card reveal tone-${tone}${"wide" in rest ? " wide" : ""}`}
+              >
+                <span className="landing-bento-icon">
+                  <Icon size={24} aria-hidden="true" />
+                </span>
+                <h3>{title}</h3>
+                <p>{copy}</p>
+                {tone === "blue" && (
+                  <div className="landing-offline-visual" aria-hidden="true">
+                    <span className="landing-offline-chip pending">
+                      <WifiOff size={15} /> Pedido #128 · guardado en el equipo
+                    </span>
+                    <span className="landing-offline-chip sent">
+                      <Check size={15} /> Pedido #128 · llegó a cocina
+                    </span>
+                  </div>
+                )}
+              </article>
+            ))}
+          </div>
+        </section>
+        <section
           id="negocios"
           className="landing-shell landing-modes"
           aria-labelledby="modes-title"
         >
-          <div className="landing-section-heading">
+          <div className="landing-section-heading reveal">
             <h2 id="modes-title">Un sistema. Dos formas de vender.</h2>
             <p>
               Activamos la versión que encaja con tu negocio. Cambia el menú, el
               punto de venta y el inventario; tus datos y tu caja siguen igual.
             </p>
           </div>
-          <div className="landing-mode-cards">
+          <div className="landing-mode-cards reveal">
             {(
               [
                 [

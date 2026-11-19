@@ -629,6 +629,16 @@ export function Tables() {
     </section>
   );
 }
+// "8 min", "2 h 5 min": un pedido viejo no se lee como "826 min".
+const elapsed = (from: string) => {
+  const minutes = Math.max(
+    0,
+    Math.floor((Date.now() - new Date(from).getTime()) / 60000),
+  );
+  return minutes < 60
+    ? `${minutes} min`
+    : `${Math.floor(minutes / 60)} h${minutes % 60 ? ` ${minutes % 60} min` : ""}`;
+};
 export function Kitchen() {
   const user = useSession((s) => s.user);
   const q = useData("kitchen", "orders?kitchen=true&limit=100", 4000),
@@ -748,15 +758,7 @@ export function Kitchen() {
                             </strong>
                             <span>
                               <Clock size={13} />
-                              {Math.max(
-                                0,
-                                Math.floor(
-                                  (Date.now() -
-                                    new Date(round.createdAt).getTime()) /
-                                    60000,
-                                ),
-                              )}{" "}
-                              min
+                              {elapsed(round.createdAt)}
                             </span>
                           </header>
                           <p>
