@@ -4042,7 +4042,7 @@ body:has(.admin-layout .modal) .toast[role="status"] {
 }
 .admin-summary {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 20px;
   align-items: start;
 }
@@ -4077,7 +4077,7 @@ body:has(.admin-layout .modal) .toast[role="status"] {
 }
 .admin-filters {
   display: grid;
-  grid-template-columns: minmax(12rem, 1.7fr) repeat(4, minmax(0, 1fr));
+  grid-template-columns: minmax(12rem, 1.6fr) repeat(5, minmax(0, 1fr));
   gap: 12px;
   padding: 0 20px 16px;
 }
@@ -4274,17 +4274,17 @@ body:has(.admin-layout .modal) .toast[role="status"] {
 }
 /* Celular: cada fila de tabla es una tarjeta con etiqueta por dato, sin desplazamiento lateral. */
 @media screen and (max-width: 640px) {
-  .table-scroll table,
-  .table-scroll tbody,
-  .table-scroll tr,
-  .table-scroll td {
+  .table-scroll > table:not(.admin-company-table),
+  .table-scroll > table:not(.admin-company-table) tbody,
+  .table-scroll > table:not(.admin-company-table) tr,
+  .table-scroll > table:not(.admin-company-table) td {
     display: block;
     width: 100%;
   }
-  .table-scroll table {
+  .table-scroll > table:not(.admin-company-table) {
     white-space: normal;
   }
-  .table-scroll thead {
+  .table-scroll > table:not(.admin-company-table) thead {
     position: absolute;
     width: 1px;
     height: 1px;
@@ -4294,15 +4294,15 @@ body:has(.admin-layout .modal) .toast[role="status"] {
   .table-hint {
     display: none;
   }
-  .table-scroll tbody tr {
+  .table-scroll > table:not(.admin-company-table) tbody tr {
     position: relative;
     padding: 8px 0;
     border-bottom: 1px solid var(--line);
   }
-  .table-scroll tbody tr:last-child {
+  .table-scroll > table:not(.admin-company-table) tbody tr:last-child {
     border-bottom: 0;
   }
-  .table-scroll td {
+  .table-scroll > table:not(.admin-company-table) td {
     display: flex;
     align-items: center;
     justify-content: space-between;
@@ -4312,21 +4312,21 @@ body:has(.admin-layout .modal) .toast[role="status"] {
     border: 0;
     text-align: right;
   }
-  .table-scroll td::before {
+  .table-scroll > table:not(.admin-company-table) td::before {
     content: attr(data-label);
     flex-shrink: 0;
     color: var(--muted);
     font-size: var(--text-micro);
     text-align: left;
   }
-  .table-scroll td:not([data-label]) {
+  .table-scroll > table:not(.admin-company-table) td:not([data-label]) {
     justify-content: flex-end;
   }
-  .table-scroll td:not([data-label])::before {
+  .table-scroll > table:not(.admin-company-table) td:not([data-label])::before {
     content: none;
   }
   /* El primer dato (número de pedido, nombre) es el título; las acciones van arriba a la derecha. */
-  .table-scroll td:first-child {
+  .table-scroll > table:not(.admin-company-table) td:first-child {
     justify-content: flex-start;
     min-height: 44px;
     padding-right: 110px;
@@ -4335,14 +4335,113 @@ body:has(.admin-layout .modal) .toast[role="status"] {
     color: var(--graphite);
     text-align: left;
   }
-  .table-scroll td:first-child::before {
+  .table-scroll > table:not(.admin-company-table) td:first-child::before {
     content: none;
   }
-  .table-scroll td:last-child:not([data-label]):not(:first-child) {
+  .table-scroll > table:not(.admin-company-table) td:last-child:not([data-label]):not(:first-child) {
     position: absolute;
     top: 8px;
     right: 0;
     width: auto;
     min-height: 44px;
   }
+}
+
+/* Super Admin: encabezado fijo translúcido, rol visible y tipo de negocio por empresa. */
+.admin-layout > .admin-header {
+  position: sticky;
+  top: 0;
+  z-index: 20;
+  margin-inline: calc(-1 * clamp(14px, 4vw, 45px));
+  padding: 14px clamp(14px, 4vw, 45px);
+  background: var(--toolbar-material);
+  backdrop-filter: blur(20px) saturate(180%);
+  -webkit-backdrop-filter: blur(20px) saturate(180%);
+  border-bottom: 1px solid var(--line);
+}
+.admin-role {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 12px;
+  border-radius: var(--pill-radius);
+  background: linear-gradient(135deg, #e8f0ff, #efe8ff);
+  color: #4b3fb8;
+  font-size: var(--text-label);
+  font-weight: 600;
+}
+.admin-layout > .admin-header > .admin-who {
+  color: var(--muted);
+  font-size: var(--text-label);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+}
+.admin-type {
+  display: inline-block;
+  width: fit-content;
+  margin: 4px 0 2px;
+  padding: 2px 9px;
+  border-radius: var(--pill-radius);
+  font-size: var(--text-micro);
+  font-weight: 600;
+}
+.admin-type.restaurant {
+  background: #fff1e6;
+  color: #9a4a10;
+}
+.admin-type.store {
+  background: #e8f0ff;
+  color: #1d4fa3;
+}
+.admin-company-name {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+}
+.admin-inline-select {
+  min-height: 40px;
+  padding: 0 34px 0 14px;
+  border: 1px solid var(--control-border);
+  border-radius: var(--control-radius);
+  background: var(--surface) var(--select-chevron) no-repeat right 12px center;
+  appearance: none;
+  font-size: var(--text-control);
+  color: var(--control-text);
+  cursor: pointer;
+}
+.admin-overview .metric,
+.admin-summary .panel {
+  transition: box-shadow var(--motion-feedback) ease-out;
+}
+@media (max-width: 1200px) {
+  .admin-summary {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .admin-filters {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+  .admin-filters > :first-child {
+    grid-column: 1 / -1;
+  }
+}
+@media (max-width: 767px) {
+  .admin-summary {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+@media (max-width: 640px) {
+  .admin-layout > .admin-header > .admin-who {
+    display: none;
+  }
+  .admin-filters {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+.admin-company-table th:last-child {
+  width: 156px;
+}
+.admin-company-action {
+  text-align: right;
 }

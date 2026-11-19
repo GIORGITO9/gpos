@@ -46,10 +46,12 @@ export async function adminCompanies(input: unknown) {
       planId: z.string().max(191).optional(),
       renewal: z.enum(renewals).optional(),
       companyStatus: z.enum(["ACTIVA", "SUSPENDIDA"]).optional(),
+      businessType: z.enum(["RESTAURANTE", "TIENDA"]).optional(),
     })
     .parse(input);
   const where: Prisma.TenantWhereInput = {
     status: query.companyStatus,
+    businessType: query.businessType,
     AND: [
       ...(query.search
         ? [
@@ -89,23 +91,35 @@ export async function adminCompanies(input: unknown) {
 
 export async function adminOverview() {
   const now = new Date();
-  const [companies, suspended, byStatus, recurring, upcoming, overdue, plans] =
-    await Promise.all([
-      db.tenant.count(),
-      db.tenant.count({ where: { status: "SUSPENDIDA" } }),
-      db.subscription.groupBy({ by: ["status"], _count: { _all: true } }),
-      db.subscription.groupBy({
-        by: ["planId"],
-        where: { status: "ACTIVA", tenant: { status: "ACTIVA" } },
-        _count: { _all: true },
-      }),
-      db.subscription.count({ where: renewalWhere(now, "upcoming") }),
-      db.subscription.count({ where: renewalWhere(now, "overdue") }),
-      db.plan.findMany({
-        include: { _count: { select: { subscriptions: true } } },
-        orderBy: [{ price: "asc" }, { name: "asc" }],
-      }),
-    ]);
+  const [
+    companies,
+    suspended,
+    byStatus,
+    recurring,
+    upcoming,
+    overdue,
+    plans,
+    byType,
+  ] = await Promise.all([
+    db.tenant.count(),
+    db.tenant.count({ where: { status: "SUSPENDIDA" } }),
+    db.subscription.groupBy({ by: ["status"], _count: { _all: true } }),
+    db.subscription.groupBy({
+      by: ["planId"],
+      where: { status: "ACTIVA", tenant: { status: "ACTIVA" } },
+      _count: { _all: true },
+    }),
+    db.subscription.count({ where: renewalWhere(now, "upcoming") }),
+    db.subscription.count({ where: renewalWhere(now, "overdue") }),
+    db.plan.findMany({
+      include: { _count: { select: { subscriptions: true } } },
+      orderBy: [{ price: "asc" }, { name: "asc" }],
+    }),
+    db.tenant.groupBy({ by: ["businessType"], _count: { _all: true } }),
+  ]);
+  const businessTypes = Object.fromEntries(
+    byType.map((row) => [row.businessType, row._count._all]),
+  );
   const counts = Object.fromEntries(
     byStatus.map((row) => [row.status, row._count._all]),
   );
@@ -123,6 +137,7 @@ export async function adminOverview() {
     upcoming,
     overdue,
     plans,
+    businessTypes,
   };
 }
 
