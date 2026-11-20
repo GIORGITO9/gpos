@@ -1,5 +1,7 @@
 import { create } from "zustand";
 import { services, serviceAllowed } from "../../api/src/domain";
+// Mismo cálculo que el servidor: el total en caja coincide con el que se cobra.
+export { promotionDiscount, totals } from "../../api/src/domain";
 export const useSession = create<any>((set) => ({
   token: null,
   user: null,
@@ -92,7 +94,7 @@ export const hiddenPaths = (u: any) =>
     : [
         ...(posServices(u).includes("RECOGER") ? [] : ["pickup"]),
         "ingredients",
-        ...(usesTables(u) ? [] : ["tables", "tables-admin"]),
+        ...(usesTables(u) ? [] : ["tables", "tables-admin", "reservations"]),
       ];
 export const serviceLabel = (u: any, service: string) =>
   isStore(u) && service === "PARA_LLEVAR"
@@ -119,6 +121,23 @@ export const roleOptions = (u: any, current?: string) =>
       r !== "OWNER" &&
       (r !== "MESERO" || usesTables(u) || current === "MESERO"),
   );
+// Abre WhatsApp con el mensaje escrito; quien atiende lo envía con un toque. Celulares de 10 dígitos → +57.
+export const whatsappLink = (phone: string, text: string) => {
+  const digits = phone.replace(/\D/g, "");
+  const intl = digits.length === 10 ? "57" + digits : digits;
+  return `https://wa.me/${intl}?text=${encodeURIComponent(text)}`;
+};
+export const statusMessage = (u: any, o: any) => {
+  const name = o.customer?.name
+    ? `Hola ${o.customer.name.split(" ")[0]}, `
+    : "Hola, ";
+  const business = u?.tenant?.name ?? "";
+  return o.status === "EN_CAMINO"
+    ? `${name}tu pedido #${o.number} de ${business} ya va en camino. 🛵`
+    : o.service === "MESA"
+      ? `${name}tu pedido #${o.number} está listo.`
+      : `${name}tu pedido #${o.number} de ${business} está listo para recoger. 🙌`;
+};
 export const stockItem = (u: any) => (isStore(u) ? "Producto" : "Ingrediente");
 export const money = (v: number) =>
   new Intl.NumberFormat("es-CO", {

@@ -8,6 +8,8 @@ export type PendingOrder = {
   userId: string;
   branchId: string;
   body: Record<string, unknown>;
+  // "checkout": venta en mostrador ya cobrada; se registra con su clave de cobro (idempotente).
+  kind?: "order" | "checkout";
   label: string;
   createdAt: string;
 };
@@ -49,7 +51,11 @@ export async function flush(
     for (const order of mine) {
       try {
         const { data } = await post(order);
-        notify(`Pedido #${data.number} enviado: ${order.label}`);
+        notify(
+          order.kind === "checkout"
+            ? `Venta #${data.number} registrada: ${order.label}`
+            : `Pedido #${data.number} enviado: ${order.label}`,
+        );
       } catch (e: any) {
         // Sin red o sesión vencida: se conserva y se reintenta después.
         if (isNetworkError(e) || /sesión/i.test(e?.message)) break;

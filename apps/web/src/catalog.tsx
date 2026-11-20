@@ -933,6 +933,16 @@ function RecipeForm({ product, close }: any) {
         </>
       )}
       <h3>Variantes</h3>
+      {product.trackStock &&
+        (store ||
+          (product.recipe?.length === 1 &&
+            product.recipe[0].quantity === 1 &&
+            product.recipe[0].ingredient?.name === product.name)) && (
+          <p className="muted">
+            Cada variante (talla, color, presentación) lleva su propio stock en
+            Inventario. Al vender se elige la variante.
+          </p>
+        )}
       {variants.map((r, i) => (
         <div className="form-row" key={i}>
           <Field

@@ -24,6 +24,7 @@ import {
   ShoppingBag,
   ReceiptText,
   Armchair,
+  CalendarClock,
   Truck,
   ChefHat,
   Package,
@@ -97,11 +98,19 @@ const Catalog = lazy(() =>
   import("./catalog").then((module) => ({ default: module.Catalog })),
 );
 const POS = lazy(() => import("./pos"));
+const Reservations = lazy(() =>
+  import("./reservations").then((m) => ({ default: m.Reservations })),
+);
+const PublicMenu = lazy(() => import("./menu"));
+const Promotions = lazy(() =>
+  import("./promotions").then((m) => ({ default: m.Promotions })),
+);
 const nav = [
   ["Inicio", "/app", LayoutDashboard, "pedidos.ver"],
   ["Punto de venta", "/app/pos", ShoppingBag, "pedidos.crear"],
   ["Pedidos", "/app/orders", ReceiptText, "pedidos.ver"],
   ["Mesas", "/app/tables", Armchair, "mesas.ver"],
+  ["Reservas", "/app/reservations", CalendarClock, "mesas.ver"],
   ["Domicilios", "/app/delivery", Truck, "pedidos.ver"],
   ["Para recoger", "/app/pickup", ShoppingBag, "pedidos.ver"],
   ["Cocina", "/app/kitchen", ChefHat, "pedidos.ver"],
@@ -117,9 +126,9 @@ const section = (to?: string) => {
   const i = nav.findIndex((n) => n[1] === to);
   return i < 1
     ? ""
-    : i < 6
+    : i < 7
       ? "VENTAS"
-      : i < 11
+      : i < 12
         ? "OPERACIÓN"
         : "ADMINISTRACIÓN";
 };
@@ -144,6 +153,14 @@ export default function App() {
     <Routes>
       <Route path="/" element={<Landing Brand={Brand} />} />
       <Route path="/legal" element={<Legal Brand={Brand} />} />
+      <Route
+        path="/menu/:branchId"
+        element={
+          <Suspense fallback={<Loading />}>
+            <PublicMenu />
+          </Suspense>
+        }
+      />
       <Route path="/login" element={<Auth />} />
       <Route path="/register" element={<Auth register />} />
       <Route
@@ -635,13 +652,21 @@ function Shell() {
       flush(
         toast,
         (order) =>
-          api(
-            "orders",
-            { ...order.body, requestKey: order.requestKey },
-            "POST",
-            true,
-            order.branchId,
-          ),
+          order.kind === "checkout"
+            ? api(
+                "orders/takeaway-checkout",
+                order.body,
+                "POST",
+                true,
+                order.branchId,
+              )
+            : api(
+                "orders",
+                { ...order.body, requestKey: order.requestKey },
+                "POST",
+                true,
+                order.branchId,
+              ),
         userId,
       ).then(() => qc.invalidateQueries());
     const up = () => {
@@ -980,6 +1005,8 @@ function Shell() {
               <Route path="reports" element={<Reports />} />
               <Route path="settings" element={<SettingsPage />} />
               <Route path="onboarding" element={<Onboarding />} />
+              <Route path="promotions" element={<Promotions />} />
+              <Route path="reservations" element={<Reservations />} />
               {[
                 "products",
                 "categories",
