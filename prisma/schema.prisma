@@ -19,7 +19,10 @@ model Tenant {
  status String @default("ACTIVA")
  businessType String @default("RESTAURANTE")
  usesTables Boolean @default(false)
+ onlineOrders Boolean @default(false)
  createdAt DateTime @default(now())
+ promotions Promotion[]
+ creditPayments CreditPayment[]
  branches Branch[]
  users User[]
  categories Category[]
@@ -78,6 +81,7 @@ model Branch {
  movements InventoryMovement[]
  purchases Purchase[]
  drivers Driver[]
+ reservations Reservation[]
  @@index([tenantId])
 }
 model User {
@@ -195,6 +199,8 @@ model Variant {
  product Product @relation(fields:[productId],references:[id],onDelete:Cascade)
  name String
  price Int
+ ingredientId String?
+ ingredient Ingredient? @relation(fields:[ingredientId],references:[id])
 }
 model Modifier {
  id String @id @default(cuid())
@@ -231,6 +237,7 @@ model Customer {
  notes String? @db.Text
  addresses CustomerAddress[]
  orders Order[]
+ creditPayments CreditPayment[]
  @@index([tenantId])
 }
 model CustomerAddress {
@@ -249,6 +256,7 @@ model DiningTable {
  seats Int @default(4)
  status String @default("LIBRE")
  orders Order[]
+ reservations Reservation[]
  @@unique([branchId,name])
 }
 model Order {
@@ -268,6 +276,7 @@ model Order {
  status String @default("CONFIRMADO")
  subtotal Int
  discount Int @default(0)
+ promoDiscount Int @default(0)
  tax Int @default(0)
  taxRate Int?
  tip Int @default(0)
@@ -297,6 +306,7 @@ model OrderItem {
  round OrderRound? @relation(fields:[roundId],references:[id],onDelete:SetNull)
  productId String
  product Product @relation(fields:[productId],references:[id])
+ variantId String?
  name String
  quantity Int
  price Int
@@ -384,6 +394,7 @@ model CashSession {
  counted Int?
  expected Int?
  difference Int?
+ countDetail Json?
  openedAt DateTime @default(now())
  closedAt DateTime?
  payments Payment[]
@@ -412,6 +423,7 @@ model Ingredient {
  recipe RecipeItem[]
  movements InventoryMovement[]
  purchases PurchaseItem[]
+ variants Variant[]
  @@index([tenantId])
 }
 model Inventory {
@@ -533,4 +545,53 @@ model ComplaintEvent {
  note String @db.Text
  createdAt DateTime @default(now())
  @@index([complaintId,createdAt])
+}
+
+// Fiado: abonos a la deuda de un cliente. La deuda es la suma de pagos con método CREDITO.
+model CreditPayment {
+ id String @id @default(cuid())
+ tenantId String
+ tenant Tenant @relation(fields:[tenantId],references:[id])
+ customerId String
+ customer Customer @relation(fields:[customerId],references:[id])
+ sessionId String
+ method String
+ amount Int
+ userId String
+ note String?
+ createdAt DateTime @default(now())
+ @@index([tenantId,customerId])
+}
+// Promociones automáticas: "lleva N paga M" o porcentaje, con días y franja horaria opcionales.
+model Promotion {
+ id String @id @default(cuid())
+ tenantId String
+ tenant Tenant @relation(fields:[tenantId],references:[id])
+ name String
+ type String
+ buy Int @default(0)
+ pay Int @default(0)
+ percent Int @default(0)
+ productIds Json
+ days Json
+ startTime String?
+ endTime String?
+ active Boolean @default(true)
+ createdAt DateTime @default(now())
+ @@index([tenantId])
+}
+model Reservation {
+ id String @id @default(cuid())
+ branchId String
+ branch Branch @relation(fields:[branchId],references:[id])
+ tableId String?
+ table DiningTable? @relation(fields:[tableId],references:[id])
+ name String
+ phone String?
+ partySize Int
+ at DateTime
+ notes String?
+ status String @default("PENDIENTE")
+ createdAt DateTime @default(now())
+ @@index([branchId,at])
 }

@@ -143,7 +143,7 @@ export const labels: Record<string, string> = {
   CERRADO: "Cobrado",
   CANCELADO: "Cancelado",
   UNIDO: "Unido",
-  BORRADOR: "Borrador",
+  BORRADOR: "Por aceptar",
   MESA: "En mesa",
   DOMICILIO: "Domicilio",
   RECOGER: "Para recoger",
@@ -176,6 +176,12 @@ export const labels: Record<string, string> = {
   INGRESO: "Ingreso",
   RETIRO: "Retiro",
   GASTO: "Gasto",
+  CREDITO: "Fiado",
+  ABONO: "Abono de fiado",
+  LLEGO: "Llegó",
+  NO_ASISTIO: "No asistió",
+  NXM: "Lleva N, paga M",
+  PORCENTAJE: "Porcentaje",
 };
 // "8 unidad" → "8 unidades"; otras unidades (g, ml, kg) no se pluralizan.
 export const unitLabel = (quantity: number, unit: string) =>

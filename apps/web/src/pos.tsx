@@ -3069,6 +3069,11 @@ function Payment({ order, close, onPaid, submitPayment }: any) {
     [error, setError] = useState("");
   const [key] = useState(newOperationKey);
   const toast = useToast();
+  // Fiado solo con un cliente identificado en el pedido.
+  const methods =
+    order.customerId || order.draft?.customerId
+      ? [...paymentMethods, "CREDITO"]
+      : paymentMethods;
   const sum = payments.reduce((s, p) => s + Number(p.amount), 0);
   const cash = useCashTender(
     Number(
@@ -3125,7 +3130,7 @@ function Payment({ order, close, onPaid, submitPayment }: any) {
                   );
                 }}
               >
-                {paymentMethods.map((m) => (
+                {methods.map((m) => (
                   <option
                     key={m}
                     value={m}
@@ -3168,7 +3173,7 @@ function Payment({ order, close, onPaid, submitPayment }: any) {
             )}
           </div>
         ))}
-        {payments.length < 7 && (
+        {payments.length < methods.length && (
           <Button
             type="button"
             variant="quiet"
@@ -3176,9 +3181,7 @@ function Payment({ order, close, onPaid, submitPayment }: any) {
               setPayments((v) => [
                 ...v,
                 {
-                  method: paymentMethods.find(
-                    (m) => !v.some((p) => p.method === m),
-                  ),
+                  method: methods.find((m) => !v.some((p) => p.method === m)),
                   amount: Math.max(0, balance - sum),
                 },
               ])

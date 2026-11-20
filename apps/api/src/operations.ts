@@ -18,11 +18,13 @@ import { Prisma } from "@prisma/client";
 import { z } from "zod";
 import { db, transaction } from "./db";
 import { audit } from "./auth";
+import { orderStatusMailer } from "./recovery-mail";
 import { money, recipeSchema, validateRecipe } from "./catalog";
 import {
   services,
   sources,
   methods,
+  promotionDiscount,
   totals,
   transitions,
   cashExpected,
@@ -98,7 +100,11 @@ export async function orders(u: any, branchId: string, q: any) {
         ],
       },
     ];
-  if (["CERRADO", "CANCELADO"].includes(q.status)) where.status = q.status;
+  if (["CERRADO", "CANCELADO", "BORRADOR"].includes(q.status))
+    where.status = q.status;
+  // Activos sin los pedidos en línea por aceptar: esos tienen su propia pestaña.
+  if (q.active === "true")
+    where.status = { notIn: ["CERRADO", "CANCELADO", "BORRADOR"] };
   if (q.status === "CANCELADO") where.mergedIntoId = null;
   if (q.status === "UNIDO") where.mergedIntoId = { not: null };
   if (q.service) where.service = q.service;
@@ -171,6 +177,7 @@ async function priceOrderLines(
         p.price) + mods.reduce((s, m) => s + m!.price, 0);
     items.push({
       productId: p.id,
+      variantId: variant?.id ?? null,
       name: p.name + (variant ? " · " + variant.name : ""),
       quantity: item.quantity,
       price,
@@ -194,8 +201,9 @@ function orderAmounts(
     deliveryFee: number;
   },
   subtotal: number,
+  discount = order.discount,
 ) {
-  if (subtotal < order.discount)
+  if (subtotal < discount)
     throw new BadRequestException("El descuento supera el subtotal");
   const taxRate =
     order.taxRate ??
@@ -204,7 +212,7 @@ function orderAmounts(
       : 0);
   const amounts = totals(
     subtotal,
-    order.discount,
+    discount,
     taxRate,
     order.tip,
     order.deliveryFee,
@@ -236,7 +244,7 @@ export async function openTableOrder(
       tenantId: u.tenantId,
       branchId,
       service: "MESA",
-      status: { notIn: ["CERRADO", "CANCELADO"] },
+      status: { notIn: ["CERRADO", "CANCELADO", "BORRADOR"] },
     },
     include: includeOrder,
   });
@@ -288,7 +296,7 @@ export async function moveTableOrder(
         where: {
           branchId,
           tableId: input.targetTableId,
-          status: { notIn: ["CERRADO", "CANCELADO"] },
+          status: { notIn: ["CERRADO", "CANCELADO", "BORRADOR"] },
         },
         select: { id: true },
       })
@@ -1045,9 +1053,25 @@ export async function addTableRound(
       order.service,
       input.items,
     );
+    const subtotal =
+      order.subtotal + items.reduce((sum, item) => sum + item.total, 0);
+    // Sin abonos, la promoción se recalcula sobre toda la cuenta (el 2x1 cuenta entre rondas).
+    const promoDiscount =
+      order.payments.length > 0
+        ? order.promoDiscount
+        : Math.min(
+            await autoPromotion(
+              tx,
+              u.tenantId,
+              [...order.items, ...items],
+              new Date(),
+            ),
+            subtotal - (order.discount - order.promoDiscount),
+          );
     const amounts = orderAmounts(
       order,
-      order.subtotal + items.reduce((sum, item) => sum + item.total, 0),
+      subtotal,
+      order.discount - order.promoDiscount + promoDiscount,
     );
     if (!order.rounds.length) {
       const first = await tx.orderRound.create({
@@ -1094,6 +1118,7 @@ export async function addTableRound(
       where: { id },
       data: {
         ...amounts,
+        promoDiscount,
         // Solo sigue entregado si no quedan rondas previas pendientes en cocina.
         status:
           skipsKitchen(u, order.service) && order.status === "ENTREGADO"
@@ -1110,6 +1135,38 @@ export async function addTableRound(
   });
 }
 
+// Hora de la venta: la del dispositivo si vendió sin conexión (hasta 24 h atrás), si no la del servidor.
+function saleTime(soldAt?: string) {
+  const now = Date.now();
+  const at = soldAt ? Date.parse(soldAt) : NaN;
+  return new Date(
+    Number.isFinite(at) && at <= now + 120_000 && at >= now - 86_400_000
+      ? Math.min(at, now)
+      : now,
+  );
+}
+async function autoPromotion(
+  tx: any,
+  tenantId: string,
+  items: { productId: string; quantity: number; price: number }[],
+  at: Date,
+) {
+  const promos = await tx.promotion.findMany({
+    where: { tenantId, active: true },
+    orderBy: { createdAt: "asc" },
+  });
+  return promos.length
+    ? promotionDiscount(
+        promos,
+        items.map(({ productId, quantity, price }) => ({
+          productId,
+          quantity,
+          price,
+        })),
+        at,
+      ).total
+    : 0;
+}
 export async function createOrder(
   body: any,
   u: any,
@@ -1131,6 +1188,10 @@ export async function createOrder(
       items: orderLines.min(1).max(100),
       // Clave del dispositivo: un reenvío tras perder la conexión no duplica el pedido.
       requestKey: z.uuid().optional(),
+      // Hora real de una venta hecha sin conexión: las promociones se evalúan a esa hora.
+      soldAt: z.string().datetime().optional(),
+      // Pedido del menú QR o del enlace: llega por aceptar en caja.
+      draft: z.boolean().optional(),
     })
     .parse(body);
   const existing = (tx: any) =>
@@ -1157,7 +1218,16 @@ export async function createOrder(
       }))
     )
       throw new BadRequestException("Cliente inválido");
-    if (b.service === "MESA") {
+    if (b.service === "MESA" && b.draft) {
+      // Por aceptar: no ocupa la mesa; al aceptarlo se abre la cuenta o se suma a la que ya existe.
+      if (
+        !b.tableId ||
+        !(await tx.diningTable.findFirst({
+          where: { id: b.tableId, branchId },
+        }))
+      )
+        throw new BadRequestException("Mesa inválida");
+    } else if (b.service === "MESA") {
       if (!b.tableId) throw new BadRequestException("Selecciona una mesa");
       const claimed = await tx.diningTable.updateMany({
         where: { id: b.tableId, branchId, status: "LIBRE" },
@@ -1170,11 +1240,20 @@ export async function createOrder(
     if (b.service === "DOMICILIO" && (!b.customerId || !b.address))
       throw new BadRequestException("Selecciona cliente y dirección");
     const items = await priceOrderLines(tx, u.tenantId, b.service, b.items);
-    if (b.discount > items.reduce((s, i) => s + i.total, 0))
+    const subtotal = items.reduce((s, i) => s + i.total, 0);
+    if (b.discount > subtotal)
       throw new BadRequestException("El descuento supera el subtotal");
+    const promo = await autoPromotion(
+      tx,
+      u.tenantId,
+      items,
+      saleTime(b.soldAt),
+    );
+    // La promoción nunca deja el pedido en negativo junto al descuento manual.
+    const promoDiscount = Math.min(promo, subtotal - b.discount);
     const amounts = totals(
-      items.reduce((s, i) => s + i.total, 0),
-      b.discount,
+      subtotal,
+      b.discount + promoDiscount,
       u.tenant.taxRate,
       b.tip,
       b.deliveryFee,
@@ -1188,11 +1267,14 @@ export async function createOrder(
         userId: u.id,
         service: b.service,
         // Tienda: la cuenta de mesa no pasa por cocina, queda lista para cobrar.
-        ...(checkoutTx || skipsKitchen(u, b.service)
-          ? { status: "ENTREGADO" }
-          : {}),
+        ...(b.draft
+          ? { status: "BORRADOR" }
+          : checkoutTx || skipsKitchen(u, b.service)
+            ? { status: "ENTREGADO" }
+            : {}),
         source: b.source,
         requestKey: b.requestKey,
+        promoDiscount,
         tableId: b.tableId,
         customerId: b.customerId,
         notes: b.notes,
@@ -1233,7 +1315,7 @@ export async function orderState(
       driverId: z.string().optional(),
     })
     .parse(body);
-  return transaction(async (tx) => {
+  const result = await transaction(async (tx) => {
     const o = await findOrder(tx, id, u, branchId);
     const round = b.roundId
       ? o.rounds.find((item: any) => item.id === b.roundId)
@@ -1344,6 +1426,22 @@ export async function orderState(
     );
     return findOrder(tx, id, u, branchId);
   });
+  if (["LISTO", "EN_CAMINO"].includes(b.status))
+    notifyCustomer(u, result, b.status);
+  return result;
+}
+// Fuera de la transacción y sin esperar: un correo lento o caído nunca frena la cocina.
+function notifyCustomer(u: any, order: any, status: string) {
+  const email = order.customer?.email;
+  const send = orderStatusMailer();
+  if (!email || !send || (status === "LISTO" && order.service === "DOMICILIO"))
+    return;
+  void send(email, {
+    business: u.tenant.name,
+    number: order.number,
+    status,
+    service: order.service,
+  }).catch((e) => console.error("Aviso al cliente no enviado", e?.message));
 }
 async function stockMove(
   tx: any,
@@ -1380,9 +1478,25 @@ async function stockMove(
 }
 type StockLine = {
   productId: string;
+  variantId?: string | null;
   quantity: number;
   stockApplied?: boolean;
 };
+// Receta efectiva de una línea: la variante con stock propio (talla, color) descuenta su unidad.
+function lineRecipe(product: any, variantId?: string | null) {
+  const variant = variantId
+    ? product.variants?.find((v: any) => v.id === variantId)
+    : null;
+  return variant?.ingredientId
+    ? [
+        {
+          ingredientId: variant.ingredientId,
+          ingredient: variant.ingredient,
+          quantity: 1,
+        },
+      ]
+    : product.recipe;
+}
 
 async function checkRecipeStock(
   tx: Prisma.TransactionClient,
@@ -1390,36 +1504,39 @@ async function checkRecipeStock(
   branchId: string,
   items: StockLine[],
 ) {
-  const quantities = new Map<string, number>();
-  for (const item of items) {
-    if (item.stockApplied) continue;
-    quantities.set(
-      item.productId,
-      (quantities.get(item.productId) ?? 0) + item.quantity,
-    );
-  }
-  if (!quantities.size) return new Map();
+  const pending = items.filter((item) => !item.stockApplied);
+  if (!pending.length) return new Map();
   const products = await tx.product.findMany({
-    where: { tenantId, id: { in: [...quantities.keys()] }, trackStock: true },
+    where: {
+      tenantId,
+      id: { in: [...new Set(pending.map((item) => item.productId))] },
+      trackStock: true,
+    },
     include: {
       recipe: {
         include: { ingredient: { select: { name: true, unit: true } } },
       },
+      variants: {
+        include: { ingredient: { select: { name: true, unit: true } } },
+      },
     },
   });
+  const byId = new Map(products.map((product) => [product.id, product]));
   const needs = new Map<
     string,
     { name: string; unit: string; quantity: number }
   >();
-  for (const product of products) {
-    if (!product.recipe.length)
+  for (const item of pending) {
+    const product = byId.get(item.productId);
+    if (!product) continue;
+    const recipe = lineRecipe(product, item.variantId);
+    if (!recipe.length)
       throw new BadRequestException(`Configura la receta de ${product.name}`);
-    for (const { ingredientId, ingredient, quantity } of product.recipe) {
+    for (const { ingredientId, ingredient, quantity } of recipe) {
       needs.set(ingredientId, {
         ...ingredient,
         quantity:
-          (needs.get(ingredientId)?.quantity ?? 0) +
-          quantity * quantities.get(product.id)!,
+          (needs.get(ingredientId)?.quantity ?? 0) + quantity * item.quantity,
       });
     }
   }
@@ -1454,6 +1571,7 @@ export async function checkOrderStock(body: unknown, u: any, branchId: string) {
         .array(
           z.object({
             productId: z.string().min(1),
+            variantId: z.string().optional(),
             quantity: z.number().int().min(1).max(999),
           }),
         )
@@ -1474,7 +1592,7 @@ async function applyLineStock(
   number: number,
   items: Pick<
     TableOrder["items"][number],
-    "id" | "productId" | "quantity" | "stockApplied"
+    "id" | "productId" | "variantId" | "quantity" | "stockApplied"
   >[],
 ) {
   const products = await checkRecipeStock(tx, u.tenantId, branchId, items);
@@ -1482,7 +1600,7 @@ async function applyLineStock(
     if (item.stockApplied) continue;
     const p = products.get(item.productId);
     if (p) {
-      for (const r of p.recipe)
+      for (const r of lineRecipe(p, item.variantId))
         await stockMove(
           tx,
           u,
@@ -1542,7 +1660,7 @@ const paymentEntry = z
       message: "El efectivo recibido debe cubrir el importe en efectivo",
     },
   );
-const paymentEntries = z.array(paymentEntry).min(1).max(7);
+const paymentEntries = z.array(paymentEntry).min(1).max(methods.length);
 
 export async function pay(
   id: string,
@@ -1596,6 +1714,11 @@ export async function pay(
     )
       throw new BadRequestException(
         "Marca todos los productos como entregados antes de cobrar",
+      );
+    // Fiado: la deuda queda a nombre de un cliente identificado.
+    if (b.payments.some((p) => p.method === "CREDITO") && !o.customerId)
+      throw new BadRequestException(
+        "Para vender fiado, selecciona el cliente del pedido",
       );
     const paid = o.payments.reduce(
       (sum: number, payment: { amount: number }) => sum + payment.amount,
@@ -1824,6 +1947,22 @@ export async function refund(id: string, body: any, u: any, branchId: string) {
         reason: b.reason,
       },
     });
+    // Devolver una venta fiada descuenta la deuda del cliente en vez de entregar dinero.
+    if (b.method === "CREDITO") {
+      if (!o.customerId)
+        throw new BadRequestException("La venta no tiene cliente para fiado");
+      await tx.creditPayment.create({
+        data: {
+          tenantId: u.tenantId,
+          customerId: o.customerId,
+          sessionId: session.id,
+          method: "DEVOLUCION",
+          amount,
+          userId: u.id,
+          note: `Devolución venta #${o.number}`,
+        },
+      });
+    }
     await audit(tx, u, "REFUND", "orders", id, { amount });
     return row;
   });
@@ -1885,13 +2024,35 @@ export async function cashAction(
     });
     if (!s) throw new BadRequestException("No tienes caja abierta");
     if (action === "close") {
-      const b = z.object({ counted: money }).parse(body);
+      const b = z
+        .object({
+          counted: money,
+          // Arqueo opcional: cantidad por denominación ("50000": 3); debe sumar lo contado.
+          countDetail: z
+            .record(
+              z.string().regex(/^\d{2,6}$/),
+              z.number().int().min(0).max(100000),
+            )
+            .optional(),
+        })
+        .parse(body);
+      if (
+        b.countDetail &&
+        Object.entries(b.countDetail).reduce(
+          (sum, [value, count]) => sum + Number(value) * count,
+          0,
+        ) !== b.counted
+      )
+        throw new BadRequestException(
+          "El arqueo por denominación no coincide con el total contado",
+        );
       const expected = cashExpected(s.opening, s.movements);
       const row = await tx.cashSession.update({
         where: { id: s.id },
         data: {
           closedAt: new Date(),
           counted: b.counted,
+          countDetail: b.countDetail,
           expected,
           difference: b.counted - expected,
         },
@@ -2135,10 +2296,43 @@ export async function productConfig(id: string, body: any, u: any) {
     })
     .parse(body);
   return transaction(async (tx) => {
-    if (!(await tx.product.findFirst({ where: { id, tenantId: u.tenantId } })))
-      throw new NotFoundException();
+    const product = await tx.product.findFirst({
+      where: { id, tenantId: u.tenantId },
+      include: {
+        variants: true,
+        recipe: { include: { ingredient: { select: { name: true } } } },
+      },
+    });
+    if (!product) throw new NotFoundException();
     // Tienda: la receta es el espejo de stock que mantiene save(); aquí no se toca.
     const keepRecipe = u.tenant.businessType === "TIENDA";
+    const [line] = product.recipe;
+    const resale =
+      keepRecipe ||
+      (product.recipe.length === 1 &&
+        line.quantity === 1 &&
+        line.ingredient.name === product.name);
+    // Producto con inventario que se vende tal cual: cada variante (talla, color) cuenta su propio stock.
+    const variants = [];
+    for (const v of b.variants) {
+      let ingredientId: string | null = null;
+      if (product.trackStock && resale) {
+        ingredientId =
+          product.variants.find((old) => old.name === v.name)?.ingredientId ??
+          (
+            await tx.ingredient.create({
+              data: {
+                tenantId: u.tenantId,
+                name: `${product.name} · ${v.name}`,
+                unit: "unidad",
+                cost: product.cost,
+                minimum: product.lowStockThreshold,
+              },
+            })
+          ).id;
+      }
+      variants.push({ ...v, ingredientId });
+    }
     if (!keepRecipe) await validateRecipe(tx, u.tenantId, b.recipe);
     for (const m of b.modifierIds)
       if (
@@ -2155,7 +2349,7 @@ export async function productConfig(id: string, body: any, u: any) {
     const row = await tx.product.update({
       where: { id },
       data: {
-        variants: { create: b.variants },
+        variants: { create: variants },
         modifiers: {
           create: b.modifierIds.map((modifierId) => ({ modifierId })),
         },
@@ -2310,5 +2504,192 @@ export async function settlePurchase(
     });
     await audit(tx, u, "PAY", "purchases", id, b);
     return row;
+  });
+}
+
+// ===== Fiado (cuentas por cobrar) =====
+/** Deuda por cliente: ventas a crédito menos abonos y devoluciones. */
+export async function creditBalances(u: any, customerId?: string) {
+  // shortcut: suma en memoria; si un negocio supera decenas de miles de ventas fiadas, pasar a SQL agrupado.
+  const [sales, paid] = await Promise.all([
+    db.payment.findMany({
+      where: {
+        tenantId: u.tenantId,
+        method: "CREDITO",
+        order: { customerId: customerId ?? { not: null } },
+      },
+      select: { amount: true, order: { select: { customerId: true } } },
+    }),
+    db.creditPayment.groupBy({
+      by: ["customerId"],
+      where: { tenantId: u.tenantId, ...(customerId ? { customerId } : {}) },
+      _sum: { amount: true },
+    }),
+  ]);
+  const balance = new Map<string, number>();
+  for (const p of sales)
+    balance.set(
+      p.order.customerId!,
+      (balance.get(p.order.customerId!) ?? 0) + p.amount,
+    );
+  for (const p of paid)
+    balance.set(
+      p.customerId,
+      (balance.get(p.customerId) ?? 0) - (p._sum.amount ?? 0),
+    );
+  return balance;
+}
+export async function creditAccounts(u: any) {
+  const balance = await creditBalances(u);
+  const ids = [...balance].filter(([, v]) => v > 0).map(([id]) => id);
+  const customers = await db.customer.findMany({
+    where: { tenantId: u.tenantId, id: { in: ids } },
+    select: { id: true, name: true, phone: true },
+  });
+  return customers
+    .map((c) => ({ ...c, balance: balance.get(c.id)! }))
+    .sort((a, b) => b.balance - a.balance);
+}
+export async function creditDetail(customerId: string, u: any) {
+  const customer = await db.customer.findFirst({
+    where: { id: customerId, tenantId: u.tenantId },
+    select: { id: true, name: true, phone: true },
+  });
+  if (!customer) throw new NotFoundException("Cliente no encontrado");
+  const [sales, payments, balance] = await Promise.all([
+    db.payment.findMany({
+      where: { tenantId: u.tenantId, method: "CREDITO", order: { customerId } },
+      select: {
+        id: true,
+        amount: true,
+        createdAt: true,
+        order: { select: { number: true } },
+      },
+      orderBy: { createdAt: "desc" },
+      take: 100,
+    }),
+    db.creditPayment.findMany({
+      where: { tenantId: u.tenantId, customerId },
+      orderBy: { createdAt: "desc" },
+      take: 100,
+    }),
+    creditBalances(u, customerId),
+  ]);
+  return { customer, balance: balance.get(customerId) ?? 0, sales, payments };
+}
+export async function creditPayment(
+  customerId: string,
+  body: unknown,
+  u: any,
+  branchId: string,
+) {
+  const b = z
+    .object({
+      amount: money.refine((v) => v > 0),
+      method: z.enum(methods).refine((m) => m !== "CREDITO", {
+        message: "Elige cómo paga el abono",
+      }),
+      note: z.string().trim().max(200).optional(),
+    })
+    .parse(body);
+  return transaction(async (tx) => {
+    if (
+      !(await tx.customer.findFirst({
+        where: { id: customerId, tenantId: u.tenantId },
+      }))
+    )
+      throw new NotFoundException("Cliente no encontrado");
+    const session = await tx.cashSession.findFirst({
+      where: { userId: u.id, closedAt: null, register: { branchId } },
+    });
+    if (!session) throw new BadRequestException("Abre tu caja antes de cobrar");
+    const balance = (await creditBalances(u, customerId)).get(customerId) ?? 0;
+    if (b.amount > balance)
+      throw new BadRequestException(
+        `El abono supera la deuda. Saldo: $ ${balance.toLocaleString("es-CO")}`,
+      );
+    const row = await tx.creditPayment.create({
+      data: {
+        tenantId: u.tenantId,
+        customerId,
+        sessionId: session.id,
+        method: b.method,
+        amount: b.amount,
+        userId: u.id,
+        note: b.note,
+      },
+    });
+    // El abono entra a la caja como ingreso del medio con que se pagó.
+    await tx.cashMovement.create({
+      data: {
+        sessionId: session.id,
+        type: "ABONO",
+        method: b.method,
+        amount: b.amount,
+        reason: "Abono de fiado",
+      },
+    });
+    await audit(tx, u, "CREDIT_PAYMENT", "customers", customerId, {
+      amount: b.amount,
+    });
+    return row;
+  });
+}
+
+// ===== Toma física de inventario =====
+/** Recibe lo contado y ajusta solo las diferencias contra el sistema. */
+export async function inventoryCount(body: unknown, u: any, branchId: string) {
+  const items = z
+    .array(
+      z.object({
+        ingredientId: z.string().min(1),
+        counted: z.number().min(0).max(1e9),
+      }),
+    )
+    .min(1)
+    .max(1000)
+    .parse(body);
+  if (new Set(items.map((i) => i.ingredientId)).size !== items.length)
+    throw new BadRequestException("Cada ítem se cuenta una sola vez");
+  return transaction(async (tx) => {
+    const known = await tx.ingredient.count({
+      where: {
+        tenantId: u.tenantId,
+        id: { in: items.map((i) => i.ingredientId) },
+      },
+    });
+    if (known !== items.length)
+      throw new BadRequestException("Ítem de inventario inválido");
+    const current = new Map(
+      (
+        await tx.inventory.findMany({
+          where: {
+            branchId,
+            ingredientId: { in: items.map((i) => i.ingredientId) },
+          },
+        })
+      ).map((row) => [row.ingredientId, row.quantity]),
+    );
+    let adjusted = 0;
+    for (const item of items) {
+      const difference = item.counted - (current.get(item.ingredientId) ?? 0);
+      // Redondeo a 3 decimales: evita ajustes por ruido de punto flotante (gramos, ml).
+      if (Math.abs(difference) < 0.0005) continue;
+      await stockMove(
+        tx,
+        u,
+        branchId,
+        item.ingredientId,
+        difference,
+        "AJUSTE",
+        "Toma física de inventario",
+      );
+      adjusted++;
+    }
+    await audit(tx, u, "INVENTORY_COUNT", "inventory", branchId, {
+      counted: items.length,
+      adjusted,
+    });
+    return { counted: items.length, adjusted };
   });
 }

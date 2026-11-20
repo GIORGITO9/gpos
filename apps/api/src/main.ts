@@ -40,6 +40,7 @@ import {
 } from "./auth";
 import { resources, list, save, remove } from "./catalog";
 import * as op from "./operations";
+import * as online from "./online";
 import { allowed, serviceAllowed, services } from "./domain";
 import { terms } from "./legal-terms";
 import * as complaints from "./complaints";
@@ -396,7 +397,7 @@ class Api {
       await db.ingredient.findMany({
         where: { tenantId: u.tenantId! },
         include: { inventory: { where: { branchId } } },
-        take: 100,
+        take: 1000,
         orderBy: { name: "asc" },
       }),
     );
@@ -614,6 +615,7 @@ class Api {
         address: z.string().nullish(),
         city: z.string(),
         taxRate: z.number().int().min(0).max(10000),
+        onlineOrders: z.boolean().optional(),
       })
       .parse(body);
     return ok(
@@ -835,6 +837,63 @@ class Api {
     await platformIdentity(req);
     return ok(await db.termsAcceptance.findUnique({ where: { tenantId } }));
   }
+  // ===== Fiado =====
+  @Get("credit/accounts") async creditAccounts(@Req() req: Request) {
+    const { u } = await ctx(req, "clientes.ver");
+    return ok(await op.creditAccounts(u));
+  }
+  @Get("customers/:id/credit") async creditDetail(
+    @Param("id") id: string,
+    @Req() req: Request,
+  ) {
+    const { u } = await ctx(req, "clientes.ver");
+    return ok(await op.creditDetail(id, u));
+  }
+  @Post("customers/:id/credit-payment") async creditPayment(
+    @Param("id") id: string,
+    @Body() body: unknown,
+    @Req() req: Request,
+  ) {
+    const { u, branchId } = await ctx(req, "ventas.crear");
+    return ok(await op.creditPayment(id, body, u, branchId));
+  }
+  // ===== Toma física de inventario =====
+  @Post("inventory/count") async inventoryCount(
+    @Body() body: unknown,
+    @Req() req: Request,
+  ) {
+    const { u, branchId } = await ctx(req, "inventario.ajustar");
+    feature(u, "inventory");
+    return ok(await op.inventoryCount(body, u, branchId));
+  }
+  // ===== Pedidos en línea (menú QR) =====
+  @Post("orders/:id/accept") async acceptOnline(
+    @Param("id") id: string,
+    @Req() req: Request,
+  ) {
+    const { u, branchId } = await ctx(req, "pedidos.crear");
+    return ok(await online.acceptDraft(id, u, branchId));
+  }
+  @Post("orders/:id/reject") async rejectOnline(
+    @Param("id") id: string,
+    @Body() body: unknown,
+    @Req() req: Request,
+  ) {
+    const { u, branchId } = await ctx(req, "pedidos.crear");
+    return ok(await online.rejectDraft(id, body, u, branchId));
+  }
+  @Get("public/menu/:branchId") async publicMenu(
+    @Param("branchId") branchId: string,
+    @Query("mesa") mesa?: string,
+  ) {
+    return ok(await online.publicMenu(branchId, mesa || undefined));
+  }
+  @Post("public/orders/:branchId") async publicOrder(
+    @Param("branchId") branchId: string,
+    @Body() body: unknown,
+  ) {
+    return ok(await online.publicOrder(branchId, body));
+  }
   @Get(":resource") async catalog(
     @Param("resource") resource: string,
     @Req() req: Request,
@@ -932,6 +991,20 @@ async function main() {
       limit: 20,
       standardHeaders: "draft-8",
       legacyHeaders: false,
+    }),
+  );
+  // Pedidos públicos del menú QR: pocos por IP para frenar abuso sin afectar a un cliente real.
+  app.use(
+    "/api/v1/public/orders",
+    rateLimit({
+      windowMs: 10 * 60000,
+      limit: 8,
+      standardHeaders: "draft-8",
+      legacyHeaders: false,
+      message: {
+        success: false,
+        message: "Ya enviaste varios pedidos. Espera unos minutos.",
+      },
     }),
   );
   app.useGlobalFilters(new Errors());

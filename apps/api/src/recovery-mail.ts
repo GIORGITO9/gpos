@@ -142,3 +142,36 @@ export function recoveryMailer() {
     });
   };
 }
+
+/** Aviso al cliente cuando su pedido está listo o va en camino. Sin SMTP no envía nada. */
+export function orderStatusMailer() {
+  const mail = smtp();
+  if (!mail) return;
+  return async (
+    to: string,
+    o: { business: string; number: number; status: string; service: string },
+  ) => {
+    const onTheWay = o.status === "EN_CAMINO";
+    const title = onTheWay
+      ? "Tu pedido va en camino"
+      : o.service === "MESA"
+        ? "Tu pedido está listo"
+        : "Tu pedido está listo para recoger";
+    const business = escapeHtml(o.business);
+    await mail.transport.sendMail({
+      from: { name: o.business.slice(0, 60) || "GPOS", address: mail.from },
+      to,
+      subject: `${title} · Pedido #${o.number}`,
+      html: emailLayout({
+        preheader: `${o.business}: pedido #${o.number}.`,
+        title,
+        intro: onTheWay
+          ? `${business} ya despachó tu pedido. Llegará pronto.`
+          : `${business} terminó tu pedido. Te esperamos.`,
+        body: `<div style="background:#f5f5f7;border-radius:14px;padding:18px;text-align:center;font-size:28px;font-weight:700;color:#1d1d1f;">#${o.number}</div>`,
+        note: "Recibes este aviso porque dejaste tu correo al hacer el pedido.",
+      }),
+      text: `${title}. ${o.business}, pedido #${o.number}.`,
+    });
+  };
+}

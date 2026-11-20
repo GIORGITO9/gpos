@@ -860,16 +860,19 @@ export function Cash() {
     qc = useQueryClient();
   const current = q.data?.find((c: any) => c.userId === s.user.id);
   const [counted, setCounted] = useState("");
-  // Cobros netos del turno por medio de pago (ventas menos devoluciones), para cuadrar cada uno.
+  // Cobros netos del turno por medio de pago (ventas y abonos de fiado menos devoluciones).
   const byMethod = Object.entries(
     (current?.movements ?? [])
-      .filter((m: any) => ["VENTA", "DEVOLUCION"].includes(m.type))
+      .filter((m: any) => ["VENTA", "DEVOLUCION", "ABONO"].includes(m.type))
       .reduce((acc: Record<string, number>, m: any) => {
         acc[m.method] = (acc[m.method] ?? 0) + m.amount;
         return acc;
       }, {}),
   ).sort((a: any, b: any) => b[1] - a[1]) as [string, number][];
-  const netSales = byMethod.reduce((n, [, v]) => n + v, 0);
+  const methodTotal = byMethod.reduce((n, [, v]) => n + Math.max(0, v), 0);
+  const netSales = (current?.movements ?? [])
+    .filter((m: any) => ["VENTA", "DEVOLUCION"].includes(m.type))
+    .reduce((n: number, m: any) => n + m.amount, 0);
   async function submit(e: any) {
     e.preventDefault();
     const data: any = Object.fromEntries(new FormData(e.currentTarget));
@@ -950,8 +953,11 @@ export function Cash() {
                       <i
                         style={{
                           width:
-                            (netSales > 0
-                              ? Math.max(0, (value / netSales) * 100)
+                            (methodTotal > 0
+                              ? Math.min(
+                                  100,
+                                  Math.max(0, (value / methodTotal) * 100),
+                                )
                               : 0) + "%",
                         }}
                       />

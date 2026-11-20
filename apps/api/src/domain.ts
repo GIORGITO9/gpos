@@ -30,6 +30,8 @@ export const methods = [
   "DAVIPLATA",
   "QR",
   "OTRO",
+  // Fiado: la venta queda como deuda del cliente y se paga después con abonos.
+  "CREDITO",
 ] as const;
 export const transitions: Record<string, string[]> = {
   BORRADOR: ["CONFIRMADO", "CANCELADO"],
@@ -126,4 +128,91 @@ export function cashExpected(
       .filter((m) => m.method === "EFECTIVO")
       .reduce((s, m) => s + m.amount, 0)
   );
+}
+
+// ===== Promociones automáticas (las usa el servidor y el punto de venta) =====
+export type PromoRule = {
+  id: string;
+  name: string;
+  type: string; // "NXM" (lleva N, paga M) | "PORCENTAJE"
+  buy: number;
+  pay: number;
+  percent: number;
+  productIds: unknown; // string[]; vacío = todos los productos
+  days: unknown; // number[] 0=domingo; vacío = todos los días
+  startTime?: string | null; // "HH:MM" hora de Colombia
+  endTime?: string | null;
+  active: boolean;
+};
+export type PromoLine = { productId: string; quantity: number; price: number };
+
+const minutesOf = (hhmm: string) => {
+  const [h, m] = hhmm.split(":").map(Number);
+  return h * 60 + m;
+};
+// Colombia no tiene horario de verano: UTC−5 fijo.
+export function bogotaClock(at: Date) {
+  const local = new Date(at.getTime() - 5 * 3600_000);
+  return {
+    day: local.getUTCDay(),
+    minutes: local.getUTCHours() * 60 + local.getUTCMinutes(),
+  };
+}
+export function promoActiveAt(p: PromoRule, at: Date) {
+  if (!p.active) return false;
+  const { day, minutes } = bogotaClock(at);
+  const days = Array.isArray(p.days) ? (p.days as number[]) : [];
+  if (days.length && !days.includes(day)) return false;
+  if (p.startTime && p.endTime) {
+    const start = minutesOf(p.startTime),
+      end = minutesOf(p.endTime);
+    // Franja que cruza la medianoche (ej. 22:00–02:00).
+    const inside =
+      start <= end
+        ? minutes >= start && minutes < end
+        : minutes >= start || minutes < end;
+    if (!inside) return false;
+  }
+  return true;
+}
+/** Descuento total y detalle; cada producto lo toma la primera promoción que aplique. */
+export function promotionDiscount(
+  promos: PromoRule[],
+  lines: PromoLine[],
+  at: Date,
+) {
+  const used = new Set<string>();
+  const applied: { name: string; amount: number }[] = [];
+  for (const p of promos) {
+    if (!promoActiveAt(p, at)) continue;
+    const ids = Array.isArray(p.productIds) ? (p.productIds as string[]) : [];
+    const eligible = lines.filter(
+      (l) =>
+        l.quantity > 0 &&
+        !used.has(l.productId) &&
+        (!ids.length || ids.includes(l.productId)),
+    );
+    if (!eligible.length) continue;
+    let amount = 0;
+    if (p.type === "NXM" && p.buy > p.pay && p.pay >= 0) {
+      // Los gratis son siempre las unidades más baratas del grupo.
+      const units = eligible
+        .flatMap((l) => Array<number>(l.quantity).fill(l.price))
+        .sort((a, b) => a - b);
+      const free = Math.floor(units.length / p.buy) * (p.buy - p.pay);
+      amount = units.slice(0, free).reduce((s, v) => s + v, 0);
+    } else if (p.type === "PORCENTAJE" && p.percent > 0 && p.percent <= 100) {
+      amount = Math.round(
+        (eligible.reduce((s, l) => s + l.price * l.quantity, 0) * p.percent) /
+          100,
+      );
+    }
+    if (amount <= 0) continue;
+    eligible.forEach((l) => used.add(l.productId));
+    applied.push({ name: p.name, amount });
+  }
+  return {
+    total: applied.reduce((s, a) => s + a.amount, 0),
+    applied,
+  };
 }
