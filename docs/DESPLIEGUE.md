@@ -17,6 +17,8 @@ Cada despliegue desde `main` ejecuta `npm run build:hostinger`, que aplica autom
 - `20261117120000_business_type`: modo Restaurante/Tienda por empresa (las existentes quedan como Restaurante).
 - `20261117130000_store_tables`: mesas opcionales para tiendas (desactivadas por defecto).
 - `20261118090000_order_request_key`: clave anti-duplicados para pedidos enviados sin conexión.
+- `20261118120000_device_verification`: dispositivos autorizados, códigos por correo y bloqueo de intentos.
+- `20261120090000_funciones_nuevas`: fiado (abonos), promociones, reservas, stock por variante, descuento por promoción en pedidos, arqueo por denominación y pedidos en línea (desactivados por defecto).
 
 Después del despliegue, cambia el modo de cada empresa desde **Super Admin → Empresas → Administrar → Tipo de negocio**. No se pueden desactivar las mesas de una tienda mientras tenga cuentas de mesa abiertas.
 
@@ -33,6 +35,13 @@ Al iniciar sesión desde un dispositivo nuevo, GPOS envía un código de 6 dígi
 - **Producción sin `SMTP_PASSWORD`:** no hay forma de entregar el código y la verificación queda desactivada. Configura el buzón antes de abrir el acceso a clientes.
 - **Desarrollo sin SMTP:** el código se imprime en la consola del servidor.
 - Prueba en producción con una cuenta real: inicia sesión en un navegador nuevo, verifica que llegue el correo y que el segundo inicio desde ese navegador no pida código.
+
+## Funciones operativas
+
+- **Menú QR y pedidos en línea:** cada negocio los activa en **Configuración → Pedidos en línea**, donde obtiene el enlace y un QR por mesa. Los pedidos llegan a **Pedidos** como «Por aceptar»; caja los acepta (van a cocina o se suman a la cuenta abierta de la mesa) o los rechaza. El envío público tiene un límite de 8 pedidos por IP cada 10 minutos.
+- **Comandas impresas:** el botón de impresora en cada ticket de Cocina imprime la comanda de 80 mm. Para imprimir automáticamente sin diálogo, abre Chrome en el equipo de cocina con `--kiosk-printing` y activa «Imprimir comandas nuevas».
+- **Avisos al cliente:** si el cliente tiene correo, recibe un aviso cuando su pedido está listo o va en camino (usa el mismo `SMTP_PASSWORD`). El botón «Avisar por WhatsApp» abre WhatsApp con el mensaje escrito para enviarlo con un toque.
+- **Cobro sin conexión:** las ventas en mostrador cobradas sin internet se guardan en el equipo y se registran al volver la red, con la hora original de la venta (para promociones por horario).
 
 ## Términos y reclamos
 

@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
@@ -31,6 +31,9 @@ import {
   PackageCheck,
   PackageX,
   TriangleAlert,
+  ClipboardCheck,
+  CalendarClock,
+  MessageCircle,
 } from "lucide-react";
 import {
   api,
@@ -46,7 +49,12 @@ import {
   stockItem,
   unitLabel,
   serviceLabel,
+  whatsappLink,
+  statusMessage,
 } from "./api";
+import { kitchenAutoKey, printKitchenTicket } from "./kitchen-print";
+import { useReservations } from "./reservations";
+import { OnlineOrdersSettings } from "./online-settings";
 import {
   PageTitle,
   TableScroll,
@@ -369,6 +377,7 @@ export function Orders({ service }: any) {
           </Link>
         }
       />
+      {!service && <OnlineInbox />}
       <div className="panel">
         <div className="table-toolbar">
           <div className="tabs">
@@ -439,8 +448,155 @@ export function Orders({ service }: any) {
     </>
   );
 }
+// Pedidos del menú QR o del enlace: caja los acepta (van a cocina) o los rechaza.
+export function OnlineInbox() {
+  const user = useSession((s) => s.user),
+    branchId = useSession((s) => s.branchId);
+  const qc = useQueryClient(),
+    toast = useToast();
+  const q = useQuery({
+    queryKey: ["online-inbox", branchId],
+    queryFn: () => get("orders?status=BORRADOR&limit=50"),
+    refetchInterval: 5000,
+    enabled: can(user, "pedidos.crear"),
+  });
+  const [busy, setBusy] = useState(""),
+    [rejecting, setRejecting] = useState<any>(null);
+  async function act(o: any, action: "accept" | "reject", reason?: string) {
+    setBusy(o.id);
+    try {
+      await api(
+        `orders/${o.id}/${action}`,
+        action === "reject" ? { reason } : {},
+      );
+      qc.invalidateQueries();
+      toast(
+        action === "accept"
+          ? `Pedido #${o.number} aceptado y enviado a ${isStore(user) ? "despachos" : "cocina"}`
+          : `Pedido #${o.number} rechazado`,
+      );
+      setRejecting(null);
+    } catch (e: any) {
+      toast(e.message, true);
+    } finally {
+      setBusy("");
+    }
+  }
+  const rows: any[] = q.data ?? [];
+  if (!rows.length) return null;
+  return (
+    <section className="panel online-inbox" aria-live="polite">
+      <div className="panel-title">
+        <div>
+          <h2>
+            <span className="pulse-dot" aria-hidden="true" /> Pedidos en línea
+            por aceptar
+          </h2>
+          <p>Llegaron desde el menú QR o el enlace del negocio.</p>
+        </div>
+      </div>
+      <div className="online-cards">
+        {rows.map((o) => (
+          <article key={o.id} className="online-card">
+            <header>
+              <strong>#{o.number}</strong>
+              <span>{o.table?.name ?? serviceLabel(user, o.service)}</span>
+            </header>
+            <p>
+              {o.customer?.name}
+              {o.customer?.phone ? ` · ${o.customer.phone}` : ""}
+            </p>
+            <ul>
+              {o.items.map((i: any) => (
+                <li key={i.id}>
+                  <b>{i.quantity}</b> {i.name}
+                  {i.notes && <small>{i.notes}</small>}
+                </li>
+              ))}
+            </ul>
+            <footer>
+              <strong>{money(o.total)}</strong>
+              <div className="button-row">
+                <Button
+                  disabled={busy === o.id}
+                  onClick={() => setRejecting(o)}
+                >
+                  Rechazar
+                </Button>
+                <Button
+                  variant="primary"
+                  disabled={busy === o.id}
+                  onClick={() => act(o, "accept")}
+                >
+                  Aceptar
+                </Button>
+              </div>
+            </footer>
+          </article>
+        ))}
+      </div>
+      {rejecting && (
+        <Modal
+          title={`Rechazar pedido #${rejecting.number}`}
+          onClose={() => setRejecting(null)}
+        >
+          <form
+            onSubmit={(e) => {
+              e.preventDefault();
+              const reason = String(
+                new FormData(e.currentTarget).get("reason") || "",
+              );
+              act(rejecting, "reject", reason);
+            }}
+          >
+            <Field label="Motivo">
+              <select name="reason" defaultValue="Producto agotado">
+                <option>Producto agotado</option>
+                <option>Estamos cerrados</option>
+                <option>No hay mesas disponibles</option>
+                <option>Pedido duplicado o de prueba</option>
+              </select>
+            </Field>
+            {rejecting.customer?.phone && (
+              <a
+                className="button"
+                target="_blank"
+                rel="noreferrer"
+                href={whatsappLink(
+                  rejecting.customer.phone,
+                  `Hola ${rejecting.customer.name}, lo sentimos: no pudimos aceptar tu pedido #${rejecting.number} en ${user.tenant.name}.`,
+                )}
+              >
+                Avisar por WhatsApp
+              </a>
+            )}
+            <Button variant="primary" disabled={busy === rejecting.id}>
+              Rechazar pedido
+            </Button>
+          </form>
+        </Modal>
+      )}
+    </section>
+  );
+}
 export function Tables() {
   const user = useSession((s) => s.user);
+  const today = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "America/Bogota",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(new Date());
+  const reservations = useReservations(today);
+  // Próxima reserva pendiente de cada mesa en las siguientes 3 horas (o con 30 min de retraso).
+  const nextReservation = (tableId: string) =>
+    (reservations.data ?? []).find(
+      (r: any) =>
+        r.tableId === tableId &&
+        r.status === "PENDIENTE" &&
+        +new Date(r.at) > Date.now() - 30 * 60000 &&
+        +new Date(r.at) < Date.now() + 3 * 3600000,
+    );
   const q = useData("tables", "tables?limit=100", 5000),
     orders = useData(
       "active-orders",
@@ -577,6 +733,19 @@ export function Tables() {
                     {table.seats === 1 ? "puesto" : "puestos"}
                   </small>
                 </span>
+                {nextReservation(table.id) && (
+                  <span className="table-reservation">
+                    <CalendarClock size={13} aria-hidden="true" />
+                    Reserva{" "}
+                    {new Intl.DateTimeFormat("es-CO", {
+                      hour: "numeric",
+                      minute: "2-digit",
+                      timeZone: "America/Bogota",
+                    }).format(new Date(nextReservation(table.id).at))}{" "}
+                    · {nextReservation(table.id).name} (
+                    {nextReservation(table.id).partySize})
+                  </span>
+                )}
                 {(occupied || available) && (
                   <span className="salon-card-footer">
                     {balance === null ? (
@@ -684,16 +853,53 @@ export function Kitchen() {
       tickets.flatMap(({ round }) => round.items.map((item) => item.station)),
     ),
   ];
+  const where = (o: any) => o.table?.name || serviceLabel(user, o.service);
+  // Impresión automática de comandas nuevas en este equipo (no reimprime las que ya estaban).
+  const [autoPrint, setAutoPrint] = useState(
+    () => localStorage.getItem(kitchenAutoKey) === "on",
+  );
+  const seen = useRef<Set<string> | null>(null);
+  useEffect(() => {
+    if (!q.data) return;
+    const fresh = tickets.filter(
+      ({ order, round }) =>
+        round.status === "CONFIRMADO" &&
+        !seen.current?.has(round.id ?? order.id),
+    );
+    const first = seen.current === null;
+    seen.current ??= new Set();
+    for (const { order, round } of fresh) {
+      seen.current.add(round.id ?? order.id);
+      if (!first && autoPrint)
+        printKitchenTicket(order, round, where(order), station);
+    }
+  }, [q.data]);
   return (
     <>
       <PageTitle
         title={isStore(user) ? "Despachos" : "Cocina"}
         subtitle="Los pedidos se actualizan automáticamente cada 4 segundos."
         action={
-          <span className="live-label">
-            <i />
-            Actualización en vivo
-          </span>
+          <div className="button-row">
+            <label className="switch-row">
+              <input
+                type="checkbox"
+                checked={autoPrint}
+                onChange={(e) => {
+                  setAutoPrint(e.target.checked);
+                  localStorage.setItem(
+                    kitchenAutoKey,
+                    e.target.checked ? "on" : "off",
+                  );
+                }}
+              />
+              Imprimir {isStore(user) ? "despachos" : "comandas"} nuevas
+            </label>
+            <span className="live-label">
+              <i />
+              Actualización en vivo
+            </span>
+          </div>
         }
       />
       {!isStore(user) && (
@@ -762,6 +968,21 @@ export function Kitchen() {
                             <span>
                               <Clock size={13} />
                               {elapsed(round.createdAt)}
+                              <button
+                                type="button"
+                                className="icon-button ticket-print"
+                                aria-label={`Imprimir comanda #${o.number}`}
+                                onClick={() =>
+                                  printKitchenTicket(
+                                    o,
+                                    round,
+                                    where(o),
+                                    station,
+                                  )
+                                }
+                              >
+                                <Printer size={15} />
+                              </button>
                             </span>
                           </header>
                           <p>
@@ -791,6 +1012,25 @@ export function Kitchen() {
                               ))}
                           </div>
                           {o.notes && <p className="order-note">{o.notes}</p>}
+                          {status === "LISTO" &&
+                            o.customer?.phone &&
+                            o.service !== "MESA" && (
+                              <a
+                                className="button whatsapp-button"
+                                target="_blank"
+                                rel="noreferrer"
+                                href={whatsappLink(
+                                  o.customer.phone,
+                                  statusMessage(user, {
+                                    ...o,
+                                    status: "LISTO",
+                                  }),
+                                )}
+                              >
+                                <MessageCircle size={16} />
+                                Avisar por WhatsApp
+                              </a>
+                            )}
                           {canAdvance && (
                             <Button
                               variant={
@@ -849,6 +1089,20 @@ export function Kitchen() {
     </>
   );
 }
+// Billetes y monedas en circulación en Colombia.
+const cashDenominations: [number, string][] = [
+  [100000, "billete"],
+  [50000, "billete"],
+  [20000, "billete"],
+  [10000, "billete"],
+  [5000, "billete"],
+  [2000, "billete"],
+  [1000, "billete o moneda"],
+  [500, "moneda"],
+  [200, "moneda"],
+  [100, "moneda"],
+  [50, "moneda"],
+];
 export function Cash() {
   const s = useSession(),
     q = useData("cash", "cash/current"),
@@ -860,28 +1114,48 @@ export function Cash() {
     qc = useQueryClient();
   const current = q.data?.find((c: any) => c.userId === s.user.id);
   const [counted, setCounted] = useState("");
-  // Cobros netos del turno por medio de pago (ventas menos devoluciones), para cuadrar cada uno.
+  // Arqueo opcional por denominación: la suma llena "Efectivo contado".
+  const [denoms, setDenoms] = useState<Record<string, string> | null>(null);
+  const denomTotal = denoms
+    ? Object.entries(denoms).reduce(
+        (n, [v, c]) => n + Number(v) * (Number(c) || 0),
+        0,
+      )
+    : 0;
+  // Cobros netos del turno por medio de pago (ventas y abonos de fiado menos devoluciones).
   const byMethod = Object.entries(
     (current?.movements ?? [])
-      .filter((m: any) => ["VENTA", "DEVOLUCION"].includes(m.type))
+      .filter((m: any) => ["VENTA", "DEVOLUCION", "ABONO"].includes(m.type))
       .reduce((acc: Record<string, number>, m: any) => {
         acc[m.method] = (acc[m.method] ?? 0) + m.amount;
         return acc;
       }, {}),
   ).sort((a: any, b: any) => b[1] - a[1]) as [string, number][];
-  const netSales = byMethod.reduce((n, [, v]) => n + v, 0);
+  const methodTotal = byMethod.reduce((n, [, v]) => n + Math.max(0, v), 0);
+  const netSales = (current?.movements ?? [])
+    .filter((m: any) => ["VENTA", "DEVOLUCION"].includes(m.type))
+    .reduce((n: number, m: any) => n + m.amount, 0);
   async function submit(e: any) {
     e.preventDefault();
     const data: any = Object.fromEntries(new FormData(e.currentTarget));
     ["opening", "counted", "amount"].forEach((k) => {
       if (k in data) data[k] = Number(data[k]);
     });
+    if (modal === "close" && denoms) {
+      data.counted = denomTotal;
+      data.countDetail = Object.fromEntries(
+        Object.entries(denoms)
+          .filter(([, c]) => Number(c) > 0)
+          .map(([v, c]) => [v, Number(c)]),
+      );
+    }
     setBusy(true);
     try {
       const j = await api("cash/" + modal, data);
       qc.invalidateQueries();
       setModal("");
       setCounted("");
+      setDenoms(null);
       toast(
         modal === "close"
           ? `Caja cerrada. Diferencia: ${money(j.data.difference)}`
@@ -950,8 +1224,11 @@ export function Cash() {
                       <i
                         style={{
                           width:
-                            (netSales > 0
-                              ? Math.max(0, (value / netSales) * 100)
+                            (methodTotal > 0
+                              ? Math.min(
+                                  100,
+                                  Math.max(0, (value / methodTotal) * 100),
+                                )
                               : 0) + "%",
                         }}
                       />
@@ -1060,6 +1337,7 @@ export function Cash() {
           onClose={() => {
             setModal("");
             setCounted("");
+            setDenoms(null);
           }}
         >
           <form onSubmit={submit}>
@@ -1098,17 +1376,66 @@ export function Cash() {
                   Efectivo esperado en caja:{" "}
                   <strong>{money(current.expected)}</strong>
                 </p>
-                <Field
-                  label="Efectivo contado"
-                  name="counted"
-                  type="number"
-                  min="0"
-                  inputMode="numeric"
-                  value={counted}
-                  onChange={(e: any) => setCounted(e.target.value)}
-                  required
-                  autoFocus
-                />
+                {denoms ? (
+                  <div className="denominations">
+                    {cashDenominations.map(([value, kind]) => (
+                      <label key={value}>
+                        <span>
+                          {money(value)}
+                          <small>{kind}</small>
+                        </span>
+                        <input
+                          type="number"
+                          min="0"
+                          inputMode="numeric"
+                          placeholder="0"
+                          aria-label={`Cantidad de ${kind} de ${money(value)}`}
+                          value={denoms[value] ?? ""}
+                          onChange={(e) => {
+                            const next = { ...denoms, [value]: e.target.value };
+                            setDenoms(next);
+                            setCounted(
+                              String(
+                                Object.entries(next).reduce(
+                                  (n, [v, c]) =>
+                                    n + Number(v) * (Number(c) || 0),
+                                  0,
+                                ),
+                              ),
+                            );
+                          }}
+                        />
+                      </label>
+                    ))}
+                    <p className="denominations-total">
+                      Total contado <strong>{money(denomTotal)}</strong>
+                    </p>
+                  </div>
+                ) : (
+                  <Field
+                    label="Efectivo contado"
+                    name="counted"
+                    type="number"
+                    min="0"
+                    inputMode="numeric"
+                    value={counted}
+                    onChange={(e: any) => setCounted(e.target.value)}
+                    required
+                    autoFocus
+                  />
+                )}
+                <button
+                  type="button"
+                  className="link-button"
+                  onClick={() => {
+                    setDenoms(denoms ? null : {});
+                    setCounted("");
+                  }}
+                >
+                  {denoms
+                    ? "Escribir el total directamente"
+                    : "Contar por billetes y monedas"}
+                </button>
                 {counted !== "" && (
                   <p
                     className={
@@ -1172,7 +1499,8 @@ export function Inventory() {
     item = stockItem(s.user);
   const [modal, setModal] = useState(false),
     [busy, setBusy] = useState(false),
-    [search, setSearch] = useState("");
+    [search, setSearch] = useState(""),
+    [counting, setCounting] = useState(false);
   const toast = useToast(),
     qc = useQueryClient();
   // Agotados primero, luego stock bajo: lo urgente arriba.
@@ -1222,10 +1550,18 @@ export function Inventory() {
         title="Inventario"
         subtitle="Lo que tienes. Lo que necesitas. Sin sorpresas."
         action={
-          <Button variant="primary" onClick={() => setModal(true)}>
-            <Plus size={17} />
-            Registrar movimiento
-          </Button>
+          <div className="button-row">
+            {stock.length > 0 && (
+              <Button onClick={() => setCounting(true)}>
+                <ClipboardCheck size={17} />
+                Toma física
+              </Button>
+            )}
+            <Button variant="primary" onClick={() => setModal(true)}>
+              <Plus size={17} />
+              Registrar movimiento
+            </Button>
+          </div>
         }
       />
       <div className="section-links">
@@ -1436,7 +1772,114 @@ export function Inventory() {
           </form>
         </Modal>
       )}
+      {counting && (
+        <InventoryCount
+          items={stock}
+          label={item}
+          close={() => setCounting(false)}
+        />
+      )}
     </>
+  );
+}
+// Toma física: se escribe lo contado; solo las diferencias generan ajustes.
+function InventoryCount({ items, label, close }: any) {
+  const [counts, setCounts] = useState<Record<string, string>>({}),
+    [busy, setBusy] = useState(false),
+    [filter, setFilter] = useState("");
+  const toast = useToast(),
+    qc = useQueryClient();
+  const changed = items.filter(
+    (i: any) =>
+      counts[i.id] !== undefined &&
+      counts[i.id] !== "" &&
+      Number(counts[i.id]) !== i.qty,
+  );
+  async function submit(e: React.FormEvent) {
+    e.preventDefault();
+    if (!changed.length) return close();
+    setBusy(true);
+    try {
+      const r = await api(
+        "inventory/count",
+        changed.map((i: any) => ({
+          ingredientId: i.id,
+          counted: Number(counts[i.id]),
+        })),
+      );
+      qc.invalidateQueries();
+      toast(`Toma física guardada: ${r.data.adjusted} ajustes`);
+      close();
+    } catch (err: any) {
+      toast(err.message, true);
+    } finally {
+      setBusy(false);
+    }
+  }
+  const shown = items.filter((i: any) =>
+    i.name.toLowerCase().includes(filter.trim().toLowerCase()),
+  );
+  return (
+    <Modal
+      title="Toma física de inventario"
+      subtitle="Escribe lo que contaste. Lo que dejes vacío no cambia."
+      onClose={close}
+      wide
+    >
+      <form onSubmit={submit} className="count-form">
+        <input
+          type="search"
+          placeholder={`Buscar ${label.toLowerCase()}…`}
+          value={filter}
+          onChange={(e) => setFilter(e.target.value)}
+        />
+        <div className="count-list">
+          {shown.map((i: any) => {
+            const value = counts[i.id] ?? "";
+            const diff = value === "" ? 0 : Number(value) - i.qty;
+            return (
+              <label key={i.id} className="count-row">
+                <span>
+                  <strong>{i.name}</strong>
+                  <small>
+                    Sistema: {i.qty.toLocaleString("es-CO")}{" "}
+                    {unitLabel(i.qty, i.unit)}
+                  </small>
+                </span>
+                <input
+                  type="number"
+                  min="0"
+                  step="any"
+                  inputMode="decimal"
+                  placeholder="Contado"
+                  aria-label={"Contado de " + i.name}
+                  value={value}
+                  onChange={(e) =>
+                    setCounts((c) => ({ ...c, [i.id]: e.target.value }))
+                  }
+                />
+                <b
+                  className={
+                    diff > 0 ? "positive" : diff < 0 ? "negative" : "muted"
+                  }
+                >
+                  {value === "" || diff === 0
+                    ? "—"
+                    : (diff > 0 ? "+" : "") + diff.toLocaleString("es-CO")}
+                </b>
+              </label>
+            );
+          })}
+        </div>
+        <Button variant="primary" disabled={busy}>
+          {busy
+            ? "Guardando…"
+            : changed.length
+              ? `Ajustar ${changed.length} ${changed.length === 1 ? "diferencia" : "diferencias"}`
+              : "Sin diferencias"}
+        </Button>
+      </form>
+    </Modal>
   );
 }
 export function Purchases() {
@@ -2067,6 +2510,7 @@ export function SettingsPage() {
           ["business", "Mi negocio"],
           ["team", "Operación y equipo"],
           ["subscription", "Suscripción"],
+          ["online", "Pedidos en línea"],
           ["audit", "Auditoría"],
           ["integrations", "Integraciones"],
         ].map(([k, v]) => (
@@ -2180,6 +2624,8 @@ export function SettingsPage() {
             pantalla.
           </p>
         </section>
+      ) : tab === "online" ? (
+        <OnlineOrdersSettings settings={q.data} />
       ) : tab === "audit" ? (
         <section className="panel">
           <TableScroll>

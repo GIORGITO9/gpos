@@ -4116,7 +4116,8 @@ body:has(.admin-layout .modal) .toast[role="status"] {
   border-top: 1px solid var(--line);
   overflow-wrap: anywhere;
 }
-.admin-activity time, .admin-company-details dt {
+.admin-activity time,
+.admin-company-details dt {
   color: var(--muted);
   font-size: var(--text-label);
 }
@@ -4169,18 +4170,35 @@ body:has(.admin-layout .modal) .toast[role="status"] {
   flex-wrap: wrap;
   gap: 12px;
 }
-.admin-complaint-filters { padding: 0 20px 14px; }
-.admin-complaint-filters form { flex: 1 1 20rem; }
-.admin-complaint-filters label { margin: 0; flex: 1; }
-.admin-complaint-filters form label { min-width: min(100%, 15rem); }
-.admin-complaint-text { white-space: pre-wrap; overflow-wrap: anywhere; }
+.admin-complaint-filters {
+  padding: 0 20px 14px;
+}
+.admin-complaint-filters form {
+  flex: 1 1 20rem;
+}
+.admin-complaint-filters label {
+  margin: 0;
+  flex: 1;
+}
+.admin-complaint-filters form label {
+  min-width: min(100%, 15rem);
+}
+.admin-complaint-text {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
 .admin-complaint-history {
   border-block: 1px solid var(--line);
   padding: 12px 20px 0 28px;
   margin-bottom: 18px;
 }
-.admin-complaint-history small { display: block; color: var(--muted); }
-.admin-complaint-list .button { justify-self: start; }
+.admin-complaint-history small {
+  display: block;
+  color: var(--muted);
+}
+.admin-complaint-list .button {
+  justify-self: start;
+}
 @media (max-width: 767px) {
   /* Despachos/Cocina en teléfono: una etapa vacía no debe ocupar media pantalla. */
   .column-empty {
@@ -4338,7 +4356,9 @@ body:has(.admin-layout .modal) .toast[role="status"] {
   .table-scroll > table:not(.admin-company-table) td:first-child::before {
     content: none;
   }
-  .table-scroll > table:not(.admin-company-table) td:last-child:not([data-label]):not(:first-child) {
+  .table-scroll
+    > table:not(.admin-company-table)
+    td:last-child:not([data-label]):not(:first-child) {
     position: absolute;
     top: 8px;
     right: 0;
@@ -4485,4 +4505,535 @@ body:has(.admin-layout .modal) .toast[role="status"] {
 .cash-difference.short {
   background: var(--cancelled-bg);
   color: var(--cancelled-text);
+}
+
+/* ===== Funciones nuevas: fiado, promociones, reservas, pedidos en línea, conteos ===== */
+.switch-row {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 40px;
+  font-size: var(--text-control);
+  cursor: pointer;
+}
+.switch-row input {
+  appearance: none;
+  position: relative;
+  width: 44px;
+  height: 26px;
+  margin: 0;
+  border-radius: var(--pill-radius);
+  background: var(--control-border);
+  transition: background-color var(--motion-feedback) ease-out;
+  cursor: pointer;
+  flex: none;
+}
+.switch-row input::after {
+  content: "";
+  position: absolute;
+  top: 3px;
+  left: 3px;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: #fff;
+  box-shadow: 0 1px 3px #0003;
+  transition: transform var(--motion-feedback) var(--motion-ease);
+}
+.switch-row input:checked {
+  background: #30a14e;
+}
+.switch-row input:checked::after {
+  transform: translateX(18px);
+}
+.switch-row.large {
+  margin: 8px 0 18px;
+  font-weight: 600;
+}
+.segmented {
+  display: inline-grid;
+  grid-auto-flow: column;
+  grid-auto-columns: minmax(0, 1fr);
+  gap: 2px;
+  margin-bottom: 14px;
+  padding: 3px;
+  border-radius: var(--control-radius);
+  background: var(--control-hover);
+}
+.segmented button {
+  min-height: 36px;
+  padding: 0 16px;
+  border: 0;
+  border-radius: calc(var(--control-radius) - 3px);
+  background: transparent;
+  color: var(--control-text);
+  font-weight: 500;
+}
+.segmented button.active {
+  background: var(--surface);
+  color: var(--graphite);
+  box-shadow: 0 1px 4px #0000001f;
+}
+.entity-form {
+  display: grid;
+  gap: 4px;
+}
+/* Fiado */
+.credit-panel .panel-title p {
+  margin: 2px 0 0;
+  color: var(--muted);
+}
+.credit-list,
+.credit-history {
+  list-style: none;
+  margin: 0;
+  padding: 0 20px 14px;
+}
+.credit-list button {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  min-height: 52px;
+  padding: 6px 0;
+  border: 0;
+  border-bottom: 1px solid var(--line);
+  background: none;
+  text-align: left;
+}
+.credit-list small,
+.credit-history small {
+  display: block;
+  color: var(--muted);
+  font-size: var(--text-micro);
+}
+.credit-list b {
+  color: var(--cancelled-text);
+}
+.credit-balance {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  margin-bottom: 16px;
+  padding: 16px 18px;
+  border-radius: var(--radius-feedback);
+  background: var(--porcelain);
+}
+.credit-balance strong {
+  font-size: var(--text-metric);
+  letter-spacing: -0.02em;
+}
+.credit-form {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 4px 12px;
+  align-items: end;
+  margin-bottom: 14px;
+}
+.credit-form .button {
+  min-height: 44px;
+}
+.credit-history {
+  padding: 0;
+  max-height: 260px;
+  overflow-y: auto;
+}
+.credit-history li {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 9px 0;
+  border-bottom: 1px solid var(--line);
+}
+/* Promociones */
+.promo-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  gap: 16px;
+}
+.promo-card {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 20px;
+  border-radius: var(--radius);
+  background:
+    radial-gradient(90% 90% at 100% 0%, #ffe7f1, transparent 70%),
+    var(--surface);
+  border: 1px solid var(--line);
+}
+.promo-card.paused {
+  opacity: 0.6;
+  background: var(--surface);
+}
+.promo-card h3 {
+  margin: 8px 0 0;
+}
+.promo-card p,
+.promo-card small {
+  margin: 0;
+  color: var(--muted);
+}
+.promo-card .button-row {
+  margin-top: auto;
+  padding-top: 10px;
+  align-items: center;
+}
+.promo-icon {
+  display: grid;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  border-radius: 13px;
+  background: var(--surface);
+  color: #b3287a;
+  box-shadow: 0 8px 20px -12px #b3287a;
+}
+.promo-deal {
+  color: #b3287a;
+  font-size: var(--text-title);
+}
+.promo-products input[type="search"] {
+  width: 100%;
+  min-height: 40px;
+  margin-bottom: 8px;
+  padding: 0 12px;
+  border: 1px solid var(--control-border);
+  border-radius: var(--control-radius);
+}
+.promo-product-list {
+  max-height: 200px;
+  overflow-y: auto;
+}
+.day-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.day-chips button {
+  min-width: 52px;
+  min-height: 40px;
+  border: 1px solid var(--control-border);
+  border-radius: var(--pill-radius);
+  background: var(--surface);
+}
+.day-chips button.active {
+  border-color: var(--blue);
+  background: var(--confirmed-bg);
+  color: var(--blue);
+  font-weight: 600;
+}
+.promo-line {
+  color: #b3287a;
+  font-weight: 600;
+}
+/* Reservas */
+.reservation-summary {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  align-self: end;
+  margin: 0 0 12px;
+}
+.reservation-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.reservation {
+  display: grid;
+  grid-template-columns: 104px minmax(0, 1fr) auto;
+  gap: 6px 16px;
+  align-items: center;
+  padding: 16px 20px;
+  border-bottom: 1px solid var(--line);
+}
+.reservation:last-child {
+  border-bottom: 0;
+}
+.reservation time {
+  white-space: nowrap;
+  font-size: var(--text-title);
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+.reservation small {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  color: var(--muted-strong);
+}
+.reservation .button-row {
+  grid-column: 2 / -1;
+}
+.reservation.CANCELADA,
+.reservation.NO_ASISTIO {
+  opacity: 0.55;
+}
+.table-reservation {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  width: fit-content;
+  padding: 3px 9px;
+  border-radius: var(--pill-radius);
+  background: var(--pending-bg);
+  color: var(--pending-text);
+  font-size: var(--text-micro);
+  font-weight: 600;
+}
+/* Pedidos en línea por aceptar */
+.online-inbox {
+  border: 1px solid #b9d4fb;
+  background:
+    radial-gradient(80% 120% at 100% 0%, #e3eeff, transparent 70%),
+    var(--surface);
+}
+.online-inbox .panel-title p {
+  margin: 2px 0 0;
+  color: var(--muted);
+}
+.online-inbox h2 {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.pulse-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--blue);
+  box-shadow: 0 0 0 0 #006bd666;
+  animation: pulse-dot 1.6s ease-out infinite;
+}
+@keyframes pulse-dot {
+  to {
+    box-shadow: 0 0 0 12px #006bd600;
+  }
+}
+.online-cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+  gap: 14px;
+  padding: 0 20px 20px;
+}
+.online-card {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 16px;
+  border-radius: var(--radius-feedback);
+  background: var(--surface);
+  border: 1px solid var(--line);
+}
+.online-card header,
+.online-card footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+.online-card header span,
+.online-card p {
+  margin: 0;
+  color: var(--muted-strong);
+  font-size: var(--text-control);
+}
+.online-card ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 4px;
+}
+.online-card li small {
+  display: block;
+  margin-left: 22px;
+  color: var(--muted);
+}
+.online-card footer .button-row {
+  flex-wrap: nowrap;
+}
+.online-card footer {
+  flex-wrap: wrap;
+  margin-top: auto;
+  padding-top: 8px;
+  border-top: 1px solid var(--line);
+}
+.whatsapp-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: #25d366;
+  border-color: #25d366;
+  color: #fff;
+}
+.whatsapp-button:hover {
+  background: #1fb455;
+}
+.ticket-print {
+  width: 30px;
+  height: 30px;
+  margin-left: 6px;
+}
+/* Toma física */
+.count-form input[type="search"] {
+  width: 100%;
+  min-height: 42px;
+  margin-bottom: 10px;
+  padding: 0 12px;
+  border: 1px solid var(--control-border);
+  border-radius: var(--control-radius);
+}
+.count-list {
+  max-height: 55vh;
+  overflow-y: auto;
+  margin-bottom: 14px;
+}
+.count-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 120px 80px;
+  gap: 12px;
+  align-items: center;
+  padding: 10px 0;
+  border-bottom: 1px solid var(--line);
+}
+.count-row small {
+  display: block;
+  color: var(--muted);
+}
+.count-row input {
+  min-height: 42px;
+  padding: 0 10px;
+  border: 1px solid var(--control-border);
+  border-radius: var(--control-radius);
+  text-align: right;
+  font-size: 16px;
+}
+.count-row b {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+/* Arqueo por denominación */
+.denominations {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px 14px;
+  margin-bottom: 8px;
+}
+.denominations label {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.denominations small {
+  display: block;
+  color: var(--muted);
+  font-size: var(--text-micro);
+}
+.denominations input {
+  width: 72px;
+  min-height: 40px;
+  padding: 0 8px;
+  border: 1px solid var(--control-border);
+  border-radius: var(--control-radius);
+  text-align: right;
+  font-size: 16px;
+}
+.denominations-total {
+  grid-column: 1 / -1;
+  display: flex;
+  justify-content: space-between;
+  margin: 6px 0 0;
+  padding-top: 8px;
+  border-top: 1px solid var(--line);
+}
+/* Menú QR en configuración */
+.online-link {
+  display: flex;
+  gap: 20px;
+  align-items: center;
+  margin: 10px 0 24px;
+  padding: 18px;
+  border-radius: var(--radius-feedback);
+  background: var(--porcelain);
+}
+.online-link code {
+  display: block;
+  margin: 6px 0 10px;
+  overflow-wrap: anywhere;
+  font-size: var(--text-label);
+}
+.online-link img,
+.qr-card img {
+  border-radius: 12px;
+  background: #fff;
+}
+.qr-placeholder {
+  display: block;
+  border-radius: 12px;
+  background: var(--control-hover);
+}
+.qr-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(170px, 1fr));
+  gap: 14px;
+}
+.qr-card {
+  display: grid;
+  justify-items: center;
+  gap: 8px;
+  margin: 0;
+  padding: 16px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-feedback);
+  text-align: center;
+  break-inside: avoid;
+}
+.qr-card small {
+  display: block;
+  color: var(--muted);
+}
+@media (max-width: 640px) {
+  .online-link {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+  .reservation {
+    grid-template-columns: 88px minmax(0, 1fr);
+  }
+  .reservation > .badge {
+    grid-column: 2;
+    width: fit-content;
+  }
+  .count-row {
+    grid-template-columns: minmax(0, 1fr) 96px 56px;
+  }
+  .credit-form {
+    grid-template-columns: 1fr;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .pulse-dot {
+    animation: none;
+  }
+}
+@media print {
+  .online-settings > :not(.qr-grid) {
+    display: none !important;
+  }
+}
+.badge.LLEGO {
+  background: var(--ready-bg);
+  color: var(--ready-text);
+}
+.badge.NO_ASISTIO,
+.badge.CANCELADA {
+  background: var(--cancelled-bg);
+  color: var(--cancelled-text);
+}
+.badge.BORRADOR {
+  background: var(--pending-bg);
+  color: var(--pending-text);
 }

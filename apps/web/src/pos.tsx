@@ -35,6 +35,7 @@ import {
   ReceiptText,
   ArrowLeft,
   LayoutGrid,
+  MessageCircle,
 } from "lucide-react";
 import { orderRounds, preparationAction } from "./order-rounds";
 import { enqueue, isNetworkError } from "./outbox";
@@ -49,6 +50,10 @@ import {
   isStore,
   serviceLabel,
   posServices,
+  promotionDiscount,
+  totals,
+  whatsappLink,
+  statusMessage,
 } from "./api";
 import {
   Button,
@@ -112,6 +117,7 @@ const directReceiptPrinter = () =>
   (window as Window & { gposReceiptPrinter?: ReceiptPrinter })
     .gposReceiptPrinter;
 const receiptPreferencesKey = "gpos.receipt-print";
+const promoCacheKey = "gpos-promotions";
 
 function readReceiptPreferences(): ReceiptPreferences {
   try {
@@ -303,7 +309,11 @@ function OrderComposer({
   const [printAfterCheckout, setPrintAfterCheckout] = useState<string>();
   const [lastOrderId, setLastOrderId] = useState<string>();
   const [checkout, setCheckout] = useState<any>(null);
-  const takeawayAttempt = useRef<{ draft: string; key: string } | null>(null);
+  const takeawayAttempt = useRef<{
+    draft: string;
+    key: string;
+    soldAt: string;
+  } | null>(null);
   const productSearch = useRef<HTMLInputElement>(null);
   const favoriteKey = "gpos.pos.favorites:" + s.user.id;
   const [favorites, setFavorites] = useState<string[]>(() => {
@@ -350,6 +360,27 @@ function OrderComposer({
     recipe: RestockIngredient[];
     targetUnits: number;
   } | null>(null);
+  const promotions = useQuery({
+    queryKey: ["promotions"],
+    queryFn: async () => {
+      const rows = await get("promotions?limit=100");
+      try {
+        localStorage.setItem(promoCacheKey, JSON.stringify(rows));
+      } catch {}
+      return rows;
+    },
+    // Sin conexión se usa la última lista guardada en el equipo.
+    initialData: () => {
+      try {
+        return (
+          JSON.parse(localStorage.getItem(promoCacheKey) ?? "null") ?? undefined
+        );
+      } catch {
+        return undefined;
+      }
+    },
+    initialDataUpdatedAt: 0,
+  });
   const products = useQuery({
     queryKey: ["products", s.branchId, "pos", search, Boolean(stockFilter)],
     queryFn: async () => {
@@ -417,9 +448,28 @@ function OrderComposer({
   });
   const account = openOrder.data;
   const itemCount = cart.reduce((count, item) => count + item.quantity, 0);
-  const subtotal = cart.reduce((a, i) => a + i.unitPrice * i.quantity, 0),
-    tax = Math.round((subtotal * s.user.tenant.taxRate) / 10000),
-    total = subtotal + tax + tip + (service === "DOMICILIO" ? deliveryFee : 0);
+  const subtotal = cart.reduce((a, i) => a + i.unitPrice * i.quantity, 0);
+  // Promociones activas ahora mismo (en una cuenta de mesa las recalcula el servidor).
+  const promo = orderId
+    ? { total: 0, applied: [] as { name: string; amount: number }[] }
+    : promotionDiscount(
+        promotions.data ?? [],
+        cart.map((i) => ({
+          productId: i.productId,
+          quantity: i.quantity,
+          price: i.unitPrice,
+        })),
+        new Date(),
+      );
+  const amounts = totals(
+    subtotal,
+    Math.min(promo.total, subtotal),
+    s.user.tenant.taxRate,
+    tip,
+    service === "DOMICILIO" ? deliveryFee : 0,
+  );
+  const tax = amounts.tax,
+    total = amounts.total;
   const currentOrder = orderId ? account : lastOrder.data;
   const balance = currentOrder
     ? currentOrder.total - orderPaid(currentOrder)
@@ -530,10 +580,12 @@ function OrderComposer({
         takeawayAttempt.current = {
           draft: serialized,
           key: newOperationKey(),
+          // Una sola hora por intento: los reintentos del mismo cobro son idénticos.
+          soldAt: new Date().toISOString(),
         };
       setCheckout({
         total,
-        draft,
+        draft: { ...draft, soldAt: takeawayAttempt.current.soldAt },
         idempotencyKey: takeawayAttempt.current.key,
       });
     } else {
@@ -1207,6 +1259,12 @@ function OrderComposer({
                     <span>Subtotal</span>
                     <span>{money(subtotal)}</span>
                   </div>
+                  {promo.applied.map((p) => (
+                    <div key={p.name} className="promo-line">
+                      <span>{p.name}</span>
+                      <span>−{money(p.amount)}</span>
+                    </div>
+                  ))}
                   <div>
                     <span>Impuestos</span>
                     <span>{money(tax)}</span>
@@ -1307,15 +1365,43 @@ function OrderComposer({
           close={() => setCheckout(null)}
           submitPayment={
             checkout.draft
-              ? (payload: any) =>
-                  api("orders/takeaway-checkout", {
+              ? async (payload: any) => {
+                  const body = {
                     ...payload,
                     order: checkout.draft,
                     idempotencyKey: checkout.idempotencyKey,
-                  })
+                  };
+                  try {
+                    return await api("orders/takeaway-checkout", body);
+                  } catch (e) {
+                    if (!isNetworkError(e)) throw e;
+                    // Sin conexión: la venta cobrada queda en el equipo y se registra al volver la red.
+                    enqueue({
+                      kind: "checkout",
+                      requestKey: checkout.idempotencyKey,
+                      userId: s.user.id,
+                      branchId: s.branchId,
+                      body,
+                      label: `Venta en mostrador · ${money(checkout.total)}`,
+                      createdAt: new Date().toISOString(),
+                    });
+                    return { data: { offline: true } };
+                  }
+                }
               : undefined
           }
           onPaid={(paidOrder: any) => {
+            if (paidOrder.offline) {
+              takeawayAttempt.current = null;
+              setCart([]);
+              setNotes("");
+              setTip(0);
+              setCheckout(null);
+              toast(
+                "Sin conexión. La venta quedó cobrada en este equipo y se registrará al volver la red.",
+              );
+              return;
+            }
             if (checkout.draft) {
               takeawayAttempt.current = null;
               setCart([]);
@@ -1570,15 +1656,25 @@ function ProductConfig({ product: p, close, add, pending }: any) {
   const [variant, setVariant] = useState(""),
     [mods, setMods] = useState<string[]>([]),
     [notes, setNotes] = useState("");
+  const variantStock = p.variants?.some((v: any) => v.availableUnits != null);
   return (
     <Modal title={p.name} subtitle="Prepáralo a su gusto." onClose={close}>
       {p.variants?.length > 0 && (
         <Field label="Presentación">
           <select value={variant} onChange={(e) => setVariant(e.target.value)}>
-            <option value="">Estándar · {money(p.price)}</option>
+            {/* Con stock por variante (talla, color) se vende siempre una variante concreta. */}
+            {!variantStock && (
+              <option value="">Estándar · {money(p.price)}</option>
+            )}
+            {variantStock && <option value="">Elige una opción</option>}
             {p.variants.map((v: any) => (
-              <option key={v.id} value={v.id}>
+              <option key={v.id} value={v.id} disabled={v.availableUnits === 0}>
                 {v.name} · {money(v.price)}
+                {v.availableUnits != null
+                  ? v.availableUnits
+                    ? ` · ${v.availableUnits} disp.`
+                    : " · agotado"
+                  : ""}
               </option>
             ))}
           </select>
@@ -1612,7 +1708,7 @@ function ProductConfig({ product: p, close, add, pending }: any) {
       </Field>
       <Button
         variant="primary"
-        disabled={pending}
+        disabled={pending || (variantStock && !variant)}
         onClick={() => add(p, variant, mods, notes)}
       >
         <Plus size={17} />
@@ -1775,6 +1871,16 @@ export function OrderDetail({
     >
       <div className="button-row">
         <Badge value={o.status} />
+        {o.customer?.phone && ["LISTO", "EN_CAMINO"].includes(o.status) && (
+          <a
+            className="button whatsapp-button"
+            target="_blank"
+            rel="noreferrer"
+            href={whatsappLink(o.customer.phone, statusMessage(s.user, o))}
+          >
+            <MessageCircle size={17} /> Avisar por WhatsApp
+          </a>
+        )}
         {tableAccount && can(s.user, "pedidos.crear") && (
           <Link
             className="button primary"
@@ -3069,6 +3175,11 @@ function Payment({ order, close, onPaid, submitPayment }: any) {
     [error, setError] = useState("");
   const [key] = useState(newOperationKey);
   const toast = useToast();
+  // Fiado solo con un cliente identificado en el pedido.
+  const methods =
+    order.customerId || order.draft?.customerId
+      ? [...paymentMethods, "CREDITO"]
+      : paymentMethods;
   const sum = payments.reduce((s, p) => s + Number(p.amount), 0);
   const cash = useCashTender(
     Number(
@@ -3092,7 +3203,7 @@ function Payment({ order, close, onPaid, submitPayment }: any) {
       const { data } = submitPayment
         ? await submitPayment(payload)
         : await api(`orders/${order.id}/payment`, payload);
-      toast("Pago registrado. La venta quedó cerrada.");
+      if (!data.offline) toast("Pago registrado. La venta quedó cerrada.");
       onPaid(data);
     } catch (e: any) {
       setError(e.message);
@@ -3125,7 +3236,7 @@ function Payment({ order, close, onPaid, submitPayment }: any) {
                   );
                 }}
               >
-                {paymentMethods.map((m) => (
+                {methods.map((m) => (
                   <option
                     key={m}
                     value={m}
@@ -3168,7 +3279,7 @@ function Payment({ order, close, onPaid, submitPayment }: any) {
             )}
           </div>
         ))}
-        {payments.length < 7 && (
+        {payments.length < methods.length && (
           <Button
             type="button"
             variant="quiet"
@@ -3176,9 +3287,7 @@ function Payment({ order, close, onPaid, submitPayment }: any) {
               setPayments((v) => [
                 ...v,
                 {
-                  method: paymentMethods.find(
-                    (m) => !v.some((p) => p.method === m),
-                  ),
+                  method: methods.find((m) => !v.some((p) => p.method === m)),
                   amount: Math.max(0, balance - sum),
                 },
               ])

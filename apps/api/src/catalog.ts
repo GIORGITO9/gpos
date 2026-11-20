@@ -8,6 +8,7 @@ import type { Prisma } from "@prisma/client";
 import bcrypt from "bcryptjs";
 import { db, transaction } from "./db";
 import { audit, roles, passwordSchema } from "./auth";
+import { serviceAllowed } from "./domain";
 const text = z.string().trim().min(1).max(200),
   optional = z.string().trim().max(500).nullish();
 export const money = z.number().int().min(0).max(1000000000);
@@ -83,6 +84,45 @@ export const schemas: Record<string, z.ZodTypeAny> = {
     active: z.boolean().default(true),
   }),
   registers: z.object({ name: text }),
+  promotions: z
+    .object({
+      name: text,
+      type: z.enum(["NXM", "PORCENTAJE"]),
+      buy: z.number().int().min(0).max(20).default(0),
+      pay: z.number().int().min(0).max(19).default(0),
+      percent: z.number().int().min(0).max(100).default(0),
+      productIds: z.array(z.string().min(1)).max(300).default([]),
+      days: z.array(z.number().int().min(0).max(6)).max(7).default([]),
+      startTime: z
+        .string()
+        .regex(/^([01]\d|2[0-3]):[0-5]\d$/, "Usa el formato HH:MM")
+        .nullish(),
+      endTime: z
+        .string()
+        .regex(/^([01]\d|2[0-3]):[0-5]\d$/, "Usa el formato HH:MM")
+        .nullish(),
+      active: z.boolean().default(true),
+    })
+    .refine((p) => p.type !== "NXM" || (p.buy >= 2 && p.buy > p.pay), {
+      message: "En «lleva N, paga M», N debe ser mayor que M",
+    })
+    .refine((p) => p.type !== "PORCENTAJE" || p.percent > 0, {
+      message: "Indica el porcentaje de descuento",
+    })
+    .refine((p) => !p.startTime === !p.endTime, {
+      message: "Indica la hora de inicio y la de fin",
+    }),
+  reservations: z.object({
+    name: text,
+    phone: optional,
+    partySize: z.number().int().min(1).max(200),
+    at: z.string().datetime({ offset: true }),
+    tableId: optional,
+    notes: optional,
+    status: z
+      .enum(["PENDIENTE", "LLEGO", "CANCELADA", "NO_ASISTIO"])
+      .default("PENDIENTE"),
+  }),
   users: z.object({
     name: text,
     email: z.string().email(),
@@ -129,6 +169,13 @@ export const resources: Record<
   tables: { model: "diningTable", permission: "mesas", branch: true },
   drivers: { model: "driver", permission: "pedidos", branch: true },
   registers: { model: "cashRegister", permission: "caja", branch: true },
+  promotions: { model: "promotion", permission: "productos" },
+  reservations: {
+    model: "reservation",
+    permission: "mesas",
+    branch: true,
+    include: { table: { select: { name: true } } },
+  },
   users: { model: "user", permission: "usuarios", include: { branches: true } },
 };
 export function scope(resource: string, u: any, branchId: string) {
@@ -151,6 +198,12 @@ export async function list(resource: string, u: any, branchId: string, q: any) {
           ? ["phone", "document"]
           : []),
     ].map((k) => ({ [k]: { contains: String(q.search) } }));
+  // Reservas de un día (hora de Colombia), en orden de llegada.
+  if (resource === "reservations" && /^\d{4}-\d{2}-\d{2}$/.test(String(q.date)))
+    where.at = {
+      gte: new Date(q.date + "T00:00:00-05:00"),
+      lte: new Date(q.date + "T23:59:59.999-05:00"),
+    };
   const model = (db as any)[r.model];
   const withAvailability = resource === "products" && q.availability === "true";
   const [rows, total] = await Promise.all([
@@ -159,15 +212,18 @@ export async function list(resource: string, u: any, branchId: string, q: any) {
       include: r.include,
       skip: (page - 1) * limit,
       take: limit,
-      orderBy: { name: "asc" },
+      orderBy: resource === "reservations" ? { at: "asc" } : { name: "asc" },
     }),
     model.count({ where }),
   ]);
   const ingredientIds = new Set<string>();
   if (withAvailability)
     for (const product of rows)
-      if (product.trackStock)
+      if (product.trackStock) {
         for (const item of product.recipe) ingredientIds.add(item.ingredientId);
+        for (const variant of product.variants)
+          if (variant.ingredientId) ingredientIds.add(variant.ingredientId);
+      }
   const balances = ingredientIds.size
     ? await db.inventory.findMany({
         where: { branchId, ingredientId: { in: [...ingredientIds] } },
@@ -209,6 +265,19 @@ export async function list(resource: string, u: any, branchId: string, q: any) {
           ...item,
           branchStock: stock.get(item.ingredientId) ?? 0,
         }));
+        // Con stock por variante, el producto suma las unidades de sus variantes.
+        if (v.variants.some((x: any) => x.ingredientId)) {
+          v.variants = v.variants.map((x: any) => ({
+            ...x,
+            availableUnits: x.ingredientId
+              ? Math.max(0, Math.floor(stock.get(x.ingredientId) ?? 0))
+              : null,
+          }));
+          v.availableUnits = v.variants.reduce(
+            (n: number, x: any) => n + (x.availableUnits ?? 0),
+            0,
+          );
+        }
       }
       return v;
     }),
@@ -294,9 +363,32 @@ export async function save(
       if (id) await tx.recipeItem.deleteMany({ where: { productId: id } });
       data.recipe = { create: recipe };
     }
+    if (
+      resource === "promotions" &&
+      data.productIds.length &&
+      (await tx.product.count({
+        where: { tenantId: u.tenantId, id: { in: data.productIds } },
+      })) !== new Set(data.productIds).size
+    )
+      throw new BadRequestException("Producto inválido en la promoción");
+    if (resource === "reservations") {
+      if (!serviceAllowed(u.tenant, "MESA"))
+        throw new BadRequestException("Tu negocio no usa mesas");
+      if (
+        data.tableId &&
+        !(await tx.diningTable.findFirst({
+          where: { id: data.tableId, branchId },
+        }))
+      )
+        throw new BadRequestException("Mesa inválida");
+      data.tableId ||= null;
+    }
     if (resource === "tables" && id) {
       const active = await tx.order.count({
-        where: { tableId: id, status: { notIn: ["CERRADO", "CANCELADO"] } },
+        where: {
+          tableId: id,
+          status: { notIn: ["CERRADO", "CANCELADO", "BORRADOR"] },
+        },
       });
       if (active)
         throw new BadRequestException("La mesa tiene un pedido activo");

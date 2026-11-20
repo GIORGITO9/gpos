@@ -38,6 +38,7 @@ import {
   useToast,
 } from "./ui";
 import { ProductIcon } from "./pos";
+import { CreditAccounts, CreditDialog } from "./credit";
 type F = [string, string, string?, any?];
 const definitions: Record<
   string,
@@ -248,7 +249,8 @@ export function Catalog({ resource }: any) {
     [editing, setEditing] = useState<any>(null),
     [config, setConfig] = useState<any>(null),
     [importing, setImporting] = useState<any[] | null>(null),
-    [addressCustomer, setAddressCustomer] = useState<any>(null);
+    [addressCustomer, setAddressCustomer] = useState<any>(null),
+    [creditCustomer, setCreditCustomer] = useState<any>(null);
   const input = useRef<HTMLInputElement>(null);
   const q = useQuery({
     queryKey: [resource, s.branchId, search, page],
@@ -316,11 +318,13 @@ export function Catalog({ resource }: any) {
           </Link>
           <Link to="/app/categories">Categorías</Link>
           <Link to="/app/modifiers">Modificadores</Link>
+          <Link to="/app/promotions">Promociones</Link>
           {!isStore(s.user) && (
             <Link to="/app/ingredients">Ingredientes y recetas</Link>
           )}
         </div>
       )}
+      {resource === "customers" && <CreditAccounts open={setCreditCustomer} />}
       <div className="panel">
         <div className="table-toolbar">
           <SearchInput
@@ -434,6 +438,12 @@ export function Catalog({ resource }: any) {
                     <td>
                       <div className="button-row">
                         {resource === "customers" &&
+                          can(s.user, "clientes.ver") && (
+                            <Button onClick={() => setCreditCustomer(r)}>
+                              Fiado
+                            </Button>
+                          )}
+                        {resource === "customers" &&
                           can(s.user, "clientes.editar") && (
                             <Button onClick={() => setAddressCustomer(r)}>
                               Direcciones
@@ -493,6 +503,12 @@ export function Catalog({ resource }: any) {
           </div>
         </div>
       </div>
+      {creditCustomer && (
+        <CreditDialog
+          customer={creditCustomer}
+          close={() => setCreditCustomer(null)}
+        />
+      )}
       {addressCustomer && (
         <AddressForm
           customer={addressCustomer}
@@ -917,6 +933,16 @@ function RecipeForm({ product, close }: any) {
         </>
       )}
       <h3>Variantes</h3>
+      {product.trackStock &&
+        (store ||
+          (product.recipe?.length === 1 &&
+            product.recipe[0].quantity === 1 &&
+            product.recipe[0].ingredient?.name === product.name)) && (
+          <p className="muted">
+            Cada variante (talla, color, presentación) lleva su propio stock en
+            Inventario. Al vender se elige la variante.
+          </p>
+        )}
       {variants.map((r, i) => (
         <div className="form-row" key={i}>
           <Field
